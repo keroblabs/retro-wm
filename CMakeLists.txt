@@ -19,7 +19,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 endif()
 
-add_library(retro_wm STATIC src/retro_wm.c src/retro_menu.c src/retro_ui.c)
+add_library(retro_wm STATIC
+    src/retro_wm.c src/retro_menu.c src/retro_ui.c src/retro_theme.c)
 target_include_directories(retro_wm PUBLIC include)
 target_link_libraries(retro_wm PUBLIC retro_build_options)
 

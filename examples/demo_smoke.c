@@ -151,7 +151,7 @@ bool demo_smoke_verify(const demo_smoke *smoke, const ui_context *ui)
         wm_front_window(&ui->windows) != smoke->created ||
         wm_get_window_bounds(&ui->windows, smoke->initial_ids[1], &closed) != WM_ERROR_NOT_FOUND ||
         captured.y != 0 || wm_has_capture(&ui->windows) ||
-        ui->windows.theme.active_title != colour.active_title ||
+        ui->windows.theme.window.active_title_background != colour.window.active_title_background ||
         !rm_is_open(&ui->menus)) {
         fprintf(stderr, "SDL smoke test failed: unexpected window/input state\n");
         return false;

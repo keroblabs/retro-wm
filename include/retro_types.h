@@ -34,12 +34,6 @@ typedef struct {
     int32_t origin_x, origin_y;
 } wm_canvas;
 
-typedef struct {
-    wm_color desktop, desktop_alt, border;
-    wm_color active_title, inactive_title, active_text, inactive_text;
-    wm_color client, outline, outline_alt;
-} wm_theme;
-
 typedef enum {
     WM_EVENT_POINTER_MOVE,
     WM_EVENT_POINTER_DOWN,

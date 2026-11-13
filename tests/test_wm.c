@@ -77,6 +77,16 @@ static uint32_t pixel(const fixture *f, int32_t x, int32_t y)
     return f->framebuffer.pixels[(size_t)y * STRIDE + (size_t)x];
 }
 
+static bool has_colour(const fixture *f, wm_rect rect, wm_color colour)
+{
+    for (int32_t y = rect.y; y < rect.y + rect.height; ++y) {
+        for (int32_t x = rect.x; x < rect.x + rect.width; ++x) {
+            if (pixel(f, x, y) == colour) return true;
+        }
+    }
+    return false;
+}
+
 static bool focus_and_hit_testing(void)
 {
     fixture f;
@@ -241,7 +251,7 @@ static bool closing_repaints_exposed_content(void)
     CHECK(!wm_needs_repaint(&f.wm));
     CHECK_OK(wm_close_window(&f.wm, a));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == f.wm.theme.desktop);
+    CHECK(pixel(&f, 100, 110) == f.wm.theme.desktop.background);
     return true;
 }
 
@@ -269,9 +279,9 @@ static bool client_clipping_stride_and_colour(void)
     CHECK_OK(wm_create_window(&f.wm, &desc, &id));
     wm_theme theme = wm_theme_colour();
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 0, 0) == theme.desktop);
-    CHECK(pixel(&f, 20, 20) == theme.border);
-    CHECK(pixel(&f, 24, 24) == theme.active_title);
+    CHECK(pixel(&f, 0, 0) == theme.desktop.background);
+    CHECK(pixel(&f, 20, 20) == theme.window.frame);
+    CHECK(pixel(&f, 24, 24) == theme.window.active_title_background);
     CHECK(pixel(&f, 30, 70) == color);
     CHECK(f.storage[0] == GUARD);
     CHECK(f.storage[STRIDE * HEIGHT + 1] == GUARD);
@@ -283,8 +293,8 @@ static bool client_clipping_stride_and_colour(void)
     wm_theme monochrome = wm_theme_monochrome();
     CHECK_OK(wm_set_theme(&f.wm, &monochrome));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 0, 0) == monochrome.desktop);
-    CHECK(pixel(&f, 24, 24) == monochrome.active_title);
+    CHECK(pixel(&f, 0, 0) == monochrome.desktop.background);
+    CHECK(pixel(&f, 24, 24) == monochrome.window.active_title_background);
     CHECK(pixel(&f, 30, 70) == color);
     return true;
 }
@@ -447,16 +457,16 @@ static bool menu_rendering_and_dismissal_restore_the_scene(void)
     CHECK(memcmp(before, f.storage, sizeof(before)) != 0);
     wm_rect row;
     CHECK_OK(rm_get_item_bounds(&menus.menu, 0, 0, &row));
-    CHECK(pixel(&f, row.x + 1, row.y + 1) == theme.active_title);
+    CHECK(pixel(&f, row.x + 1, row.y + 1) == theme.menu.selected_item_background);
     CHECK_OK(rm_get_item_bounds(&menus.menu, 0, 3, &row));
     int32_t check_x = row.x + 6;
     int32_t check_y = row.y + (row.height - WM_TEXT_HEIGHT) / 2 + 5;
-    CHECK(pixel(&f, check_x, check_y) == theme.border);
+    CHECK(pixel(&f, check_x, check_y) == theme.menu.dropdown_text);
     menus.file_items[3].checked = false;
     rm_invalidate(&menus.menu);
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
     CHECK_OK(rm_render(&menus.menu, &f.framebuffer, &theme));
-    CHECK(pixel(&f, check_x, check_y) == theme.client);
+    CHECK(pixel(&f, check_x, check_y) == theme.menu.dropdown_background);
     CHECK_OK(menu_key(&menus, WM_KEY_ESCAPE, &result));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
     CHECK_OK(rm_render(&menus.menu, &f.framebuffer, &theme));
@@ -599,8 +609,8 @@ static bool ui_composes_framebuffer_views_and_preserves_valid_state(void)
     CHECK_OK(wm_create_window(&ui.windows, &desc, &id));
     CHECK_OK(ui_render(&ui));
     wm_theme theme = wm_theme_colour();
-    CHECK(pixel(&f, 0, 0) == theme.client);
-    CHECK(pixel(&f, 0, RM_BAR_HEIGHT) == theme.border);
+    CHECK(pixel(&f, 0, 0) == theme.menu.bar_background);
+    CHECK(pixel(&f, 0, RM_BAR_HEIGHT) == theme.window.frame);
     CHECK(pixel(&f, 10, RM_BAR_HEIGHT + WM_BORDER + WM_TITLE_HEIGHT + 3) == color);
     uint32_t before[STRIDE * HEIGHT + 2];
     memcpy(before, f.storage, sizeof(before));
@@ -623,6 +633,110 @@ static bool ui_composes_framebuffer_views_and_preserves_valid_state(void)
     CHECK(ui_init(&ui, &f.framebuffer, menus.menus, 0) == WM_ERROR_ARGUMENT);
     CHECK_OK(ui_render(&ui));
     CHECK(memcmp(before, f.storage, sizeof(before)) == 0);
+    return true;
+}
+
+static bool menu_theme_roles_are_independent(void)
+{
+    fixture f;
+    menu_fixture menus;
+    ui_context ui;
+    CHECK(setup(&f) && setup_menu(&menus));
+    menus.file_items[3].checked = false;
+    CHECK_OK(ui_init(&ui, &f.framebuffer, menus.menus, 2));
+    wm_window_desc desc = {
+        "WINDOW", {160, 130, 150, 80}, WM_MIN_WIDTH, WM_MIN_HEIGHT, NULL, NULL
+    };
+    wm_id id;
+    CHECK_OK(wm_create_window(&ui.windows, &desc, &id));
+    wm_theme theme = wm_theme_colour();
+    theme.menu = (wm_menu_colours){
+        .bar_background = WM_RGB(11, 21, 31), .bar_text = WM_RGB(12, 22, 32),
+        .active_bar_background = WM_RGB(13, 23, 33), .active_bar_text = WM_RGB(14, 24, 34),
+        .dropdown_background = WM_RGB(15, 25, 35), .dropdown_text = WM_RGB(16, 26, 36),
+        .selected_item_background = WM_RGB(17, 27, 37),
+        .selected_item_text = WM_RGB(18, 28, 38),
+        .border = WM_RGB(19, 29, 39), .separator = WM_RGB(20, 30, 40),
+        .shadow = WM_RGB(21, 31, 41)
+    };
+    CHECK_OK(wm_set_theme(&ui.windows, &theme));
+    wm_event event = {.type = WM_EVENT_KEY_DOWN, .key = WM_KEY_F10};
+    ui_result result;
+    CHECK_OK(ui_handle_event(&ui, &event, &result));
+    CHECK_OK(ui_render(&ui));
+    rm_menu_bounds file, view;
+    wm_rect selected, ordinary, separator;
+    CHECK_OK(rm_get_menu_bounds(&ui.menus, 0, &file));
+    CHECK_OK(rm_get_menu_bounds(&ui.menus, 1, &view));
+    CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 0, &selected));
+    CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 3, &ordinary));
+    CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 1, &separator));
+    CHECK(pixel(&f, WIDTH - 5, 10) == theme.menu.bar_background);
+    CHECK(has_colour(&f, file.button, theme.menu.active_bar_background));
+    CHECK(has_colour(&f, file.button, theme.menu.active_bar_text));
+    CHECK(has_colour(&f, view.button, theme.menu.bar_text));
+    CHECK(has_colour(&f, selected, theme.menu.selected_item_background));
+    CHECK(has_colour(&f, selected, theme.menu.selected_item_text));
+    CHECK(has_colour(&f, ordinary, theme.menu.dropdown_background));
+    CHECK(has_colour(&f, ordinary, theme.menu.dropdown_text));
+    CHECK(pixel(&f, file.popup.x, file.popup.y) == theme.menu.border);
+    CHECK(pixel(&f, separator.x + separator.width / 2,
+                 separator.y + separator.height / 2) == theme.menu.separator);
+    CHECK(pixel(&f, file.popup.x + file.popup.width + 1,
+                 file.popup.y + file.popup.height - 1) == theme.menu.shadow);
+    CHECK(pixel(&f, 163, 133 + RM_BAR_HEIGHT) == theme.window.active_title_background);
+    return true;
+}
+
+static bool window_desktop_and_outline_theme_roles_are_independent(void)
+{
+    fixture f;
+    menu_fixture menus;
+    ui_context ui;
+    CHECK(setup(&f) && setup_menu(&menus));
+    CHECK_OK(ui_init(&ui, &f.framebuffer, menus.menus, 2));
+    wm_window_desc desc = {
+        "TEST", {10, 40, 130, 90}, WM_MIN_WIDTH, WM_MIN_HEIGHT, NULL, NULL
+    };
+    wm_id first, second;
+    CHECK_OK(wm_create_window(&ui.windows, &desc, &first));
+    desc.bounds.x = 175;
+    CHECK_OK(wm_create_window(&ui.windows, &desc, &second));
+    wm_theme theme = wm_theme_colour();
+    theme.desktop = (wm_desktop_colours){WM_RGB(31, 41, 51), WM_RGB(32, 42, 52)};
+    theme.window = (wm_window_colours){
+        .frame = WM_RGB(33, 43, 53), .client_background = WM_RGB(34, 44, 54),
+        .active_title_background = WM_RGB(35, 45, 55),
+        .inactive_title_background = WM_RGB(36, 46, 56),
+        .active_title_text = WM_RGB(37, 47, 57), .inactive_title_text = WM_RGB(38, 48, 58)
+    };
+    theme.outline = (wm_outline_colours){WM_RGB(39, 49, 59), WM_RGB(40, 50, 60)};
+    CHECK_OK(wm_set_theme(&ui.windows, &theme));
+    CHECK_OK(ui_render(&ui));
+    CHECK(pixel(&f, 0, RM_BAR_HEIGHT) == theme.desktop.background);
+    CHECK(pixel(&f, 1, RM_BAR_HEIGHT) == theme.desktop.alternate_background);
+    CHECK(pixel(&f, 10, 40 + RM_BAR_HEIGHT) == theme.window.frame);
+    CHECK(pixel(&f, 20, 90 + RM_BAR_HEIGHT) == theme.window.client_background);
+    CHECK(pixel(&f, 13, 43 + RM_BAR_HEIGHT) == theme.window.inactive_title_background);
+    CHECK(pixel(&f, 178, 43 + RM_BAR_HEIGHT) == theme.window.active_title_background);
+    CHECK(has_colour(&f, (wm_rect){12, 42 + RM_BAR_HEIGHT, 100, WM_TITLE_HEIGHT},
+                      theme.window.inactive_title_text));
+    CHECK(has_colour(&f, (wm_rect){177, 42 + RM_BAR_HEIGHT, 100, WM_TITLE_HEIGHT},
+                      theme.window.active_title_text));
+    CHECK(pixel(&f, WIDTH - 2, 10) == theme.menu.bar_background);
+    wm_event event = {
+        .type = WM_EVENT_POINTER_DOWN, .button = WM_BUTTON_PRIMARY,
+        .x = 40, .y = 50 + RM_BAR_HEIGHT
+    };
+    ui_result result;
+    CHECK_OK(ui_handle_event(&ui, &event, &result));
+    event.type = WM_EVENT_POINTER_MOVE;
+    event.x = 70;
+    event.y = 60 + RM_BAR_HEIGHT;
+    CHECK_OK(ui_handle_event(&ui, &event, &result));
+    CHECK_OK(ui_render(&ui));
+    CHECK(pixel(&f, 40, 50 + RM_BAR_HEIGHT) == theme.outline.foreground);
+    CHECK(pixel(&f, 44, 50 + RM_BAR_HEIGHT) == theme.outline.alternate);
     return true;
 }
 
@@ -674,7 +788,9 @@ int main(void)
         {"menu layout and validation", menu_layout_and_invalid_descriptors},
         {"UI capture routing and commands", ui_routes_capture_and_returns_application_commands},
         {"UI cancellation and close notifications", ui_cancels_interactions_and_reports_closed_windows},
-        {"UI composition and validation", ui_composes_framebuffer_views_and_preserves_valid_state}
+        {"UI composition and validation", ui_composes_framebuffer_views_and_preserves_valid_state},
+        {"independent menu theme roles", menu_theme_roles_are_independent},
+        {"independent window/desktop/outline roles", window_desktop_and_outline_theme_roles_are_independent}
     };
     for (size_t i = 0; i < sizeof(tests) / sizeof(tests[0]); ++i) {
         if (!tests[i].run()) {

@@ -95,26 +95,6 @@ const char *wm_status_string(wm_status status)
     return "unknown window-manager status";
 }
 
-wm_theme wm_theme_monochrome(void)
-{
-    const wm_color black = WM_RGB(0, 0, 0);
-    const wm_color white = WM_RGB(255, 255, 255);
-    return (wm_theme){
-        white, black, black, black, white, white, black,
-        white, black, white
-    };
-}
-
-wm_theme wm_theme_colour(void)
-{
-    return (wm_theme){
-        WM_RGB(48, 91, 108), WM_RGB(54, 100, 117), WM_RGB(25, 33, 48),
-        WM_RGB(42, 69, 132), WM_RGB(177, 190, 207),
-        WM_RGB(255, 255, 255), WM_RGB(25, 33, 48),
-        WM_RGB(245, 241, 224), WM_RGB(255, 215, 72), WM_RGB(25, 33, 48)
-    };
-}
-
 wm_status wm_init(wm_context *context, int32_t width, int32_t height)
 {
     if (context == NULL || width < WM_MIN_WIDTH || height < WM_MIN_HEIGHT) {
@@ -556,11 +536,12 @@ static void draw_window(wm_context *context, wm_framebuffer *framebuffer,
         bounds.width - 2 * WM_BORDER, WM_TITLE_HEIGHT
     };
     bool active = window->id == wm_front_window(context);
-    wm_color title_color = active ? context->theme.active_title
-                                 : context->theme.inactive_title;
-    wm_color text_color = active ? context->theme.active_text
-                                : context->theme.inactive_text;
-    wm_canvas_fill(&screen, bounds, context->theme.border);
+    const wm_window_colours *colours = &context->theme.window;
+    wm_color title_color = active ? colours->active_title_background
+                                 : colours->inactive_title_background;
+    wm_color text_color = active ? colours->active_title_text
+                                : colours->inactive_title_text;
+    wm_canvas_fill(&screen, bounds, colours->frame);
     wm_canvas_fill(&screen, title, title_color);
     wm_canvas title_canvas = screen;
     title_canvas.clip = (wm_rect){title.x + 5, title.y, title.width - 29, title.height};
@@ -568,7 +549,7 @@ static void draw_window(wm_context *context, wm_framebuffer *framebuffer,
                    window->title, text_color);
 
     wm_rect client = client_rect(bounds);
-    wm_canvas_fill(&screen, client, context->theme.client);
+    wm_canvas_fill(&screen, client, colours->client_background);
     if (window->paint != NULL) {
         wm_canvas canvas = {framebuffer, client, client.x, client.y};
         window->paint(&canvas, client.width, client.height, window->userdata);
@@ -578,8 +559,8 @@ static void draw_window(wm_context *context, wm_framebuffer *framebuffer,
     bool pressed = context->captured == window->id &&
                    context->interaction == WM_INTERACTION_CLOSE &&
                    context->close_armed;
-    wm_color close_fill = pressed ? context->theme.border : context->theme.client;
-    wm_color close_ink = pressed ? context->theme.client : context->theme.border;
+    wm_color close_fill = pressed ? colours->frame : colours->client_background;
+    wm_color close_ink = pressed ? colours->client_background : colours->frame;
     wm_canvas_fill(&screen, close, close_fill);
     wm_canvas_frame(&screen, close, close_ink);
     for (int i = 4; i < 12; ++i) {
@@ -587,13 +568,13 @@ static void draw_window(wm_context *context, wm_framebuffer *framebuffer,
         wm_canvas_fill(&screen, (wm_rect){close.x + 15 - i, close.y + i, 1, 1}, close_ink);
     }
     wm_rect grip = resize_rect(bounds);
-    wm_canvas_fill(&screen, grip, context->theme.client);
+    wm_canvas_fill(&screen, grip, colours->client_background);
     for (int line = 3; line < WM_RESIZE_SIZE; line += 4) {
         for (int i = 0; i < line; ++i) {
             wm_canvas_fill(&screen, (wm_rect){
                 grip.x + WM_RESIZE_SIZE - line + i,
                 grip.y + WM_RESIZE_SIZE - 1 - i, 1, 1
-            }, context->theme.border);
+            }, colours->frame);
         }
     }
 }
@@ -604,15 +585,16 @@ static void draw_outline(wm_context *context, wm_framebuffer *framebuffer)
         framebuffer, {0, 0, framebuffer->width, framebuffer->height}, 0, 0
     };
     wm_rect rect = context->pending;
+    const wm_outline_colours *colours = &context->theme.outline;
     for (int32_t x = rect.x; x < rect.x + rect.width; ++x) {
         wm_color color = ((x - rect.x) / 4) % 2 == 0
-                       ? context->theme.outline : context->theme.outline_alt;
+                       ? colours->foreground : colours->alternate;
         wm_canvas_fill(&canvas, (wm_rect){x, rect.y, 1, 2}, color);
         wm_canvas_fill(&canvas, (wm_rect){x, rect.y + rect.height - 2, 1, 2}, color);
     }
     for (int32_t y = rect.y; y < rect.y + rect.height; ++y) {
         wm_color color = ((y - rect.y) / 4) % 2 == 0
-                       ? context->theme.outline : context->theme.outline_alt;
+                       ? colours->foreground : colours->alternate;
         wm_canvas_fill(&canvas, (wm_rect){rect.x, y, 2, 1}, color);
         wm_canvas_fill(&canvas, (wm_rect){rect.x + rect.width - 2, y, 2, 1}, color);
     }
@@ -632,7 +614,8 @@ wm_status wm_render(wm_context *context, wm_framebuffer *framebuffer)
         uint32_t *row = framebuffer->pixels + (size_t)y * framebuffer->stride_pixels;
         for (int32_t x = 0; x < context->width; ++x) {
             row[x] = ((x ^ y) & 1) == 0
-                   ? context->theme.desktop : context->theme.desktop_alt;
+                   ? context->theme.desktop.background
+                   : context->theme.desktop.alternate_background;
         }
     }
     for (size_t i = 0; i < context->count; ++i) {

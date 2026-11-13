@@ -311,15 +311,18 @@ wm_status rm_render(rm_context *context, wm_framebuffer *framebuffer,
     wm_canvas canvas = {
         framebuffer, {0, 0, context->width, context->height}, 0, 0
     };
-    wm_canvas_fill(&canvas, (wm_rect){0, 0, context->width, RM_BAR_HEIGHT}, theme->client);
-    wm_canvas_fill(&canvas, (wm_rect){0, RM_BAR_HEIGHT - 2, context->width, 2}, theme->border);
+    const wm_menu_colours *colours = &theme->menu;
+    wm_canvas_fill(&canvas, (wm_rect){0, 0, context->width, RM_BAR_HEIGHT},
+                   colours->bar_background);
+    wm_canvas_fill(&canvas, (wm_rect){0, RM_BAR_HEIGHT - 2, context->width, 2},
+                   colours->border);
     for (size_t m = 0; m < context->count; ++m) {
         wm_rect button = context->bounds[m].button;
         bool selected = (int32_t)m == context->active_menu;
-        if (selected) wm_canvas_fill(&canvas, button, theme->active_title);
+        if (selected) wm_canvas_fill(&canvas, button, colours->active_bar_background);
         wm_canvas_text(&canvas, button.x + 10, (RM_BAR_HEIGHT - WM_TEXT_HEIGHT) / 2,
                        context->menus[m].label,
-                       selected ? theme->active_text : theme->border);
+                       selected ? colours->active_bar_text : colours->bar_text);
     }
     if (rm_is_open(context)) {
         int32_t active = context->active_menu;
@@ -327,9 +330,9 @@ wm_status rm_render(rm_context *context, wm_framebuffer *framebuffer,
         wm_rect popup = context->bounds[active].popup;
         wm_canvas_fill(&canvas, (wm_rect){
             popup.x + 3, popup.y + 3, popup.width, popup.height
-        }, theme->border);
-        wm_canvas_fill(&canvas, popup, theme->client);
-        wm_canvas_frame(&canvas, popup, theme->border);
+        }, colours->shadow);
+        wm_canvas_fill(&canvas, popup, colours->dropdown_background);
+        wm_canvas_frame(&canvas, popup, colours->border);
         for (size_t i = 0; i < menu->count; ++i) {
             const rm_item *item = &menu->items[i];
             wm_rect row = context->rows[active][i];
@@ -337,12 +340,14 @@ wm_status rm_render(rm_context *context, wm_framebuffer *framebuffer,
                 wm_canvas_fill(&canvas, (wm_rect){
                     row.x + PADDING, row.y + row.height / 2,
                     row.width - 2 * PADDING, 1
-                }, theme->border);
+                }, colours->separator);
                 continue;
             }
             bool selected = (int32_t)i == context->active_item && item->enabled;
-            wm_color background = selected ? theme->active_title : theme->client;
-            wm_color foreground = selected ? theme->active_text : theme->border;
+            wm_color background = selected ? colours->selected_item_background
+                                          : colours->dropdown_background;
+            wm_color foreground = selected ? colours->selected_item_text
+                                          : colours->dropdown_text;
             wm_canvas_fill(&canvas, row, background);
             int32_t text_y = row.y + (row.height - WM_TEXT_HEIGHT) / 2;
             int32_t text_x = row.x + PADDING + CHECK_WIDTH;

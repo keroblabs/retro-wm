@@ -2,6 +2,7 @@
 #define RETRO_WM_H
 
 #include "retro_types.h"
+#include "retro_theme.h"
 
 enum {
     WM_MAX_WINDOWS = 8,
@@ -89,8 +90,6 @@ typedef struct {
     bool close_armed;
 } wm_context;
 
-wm_theme wm_theme_monochrome(void);
-wm_theme wm_theme_colour(void);
 wm_status wm_init(wm_context *context, int32_t width, int32_t height);
 wm_status wm_set_theme(wm_context *context, const wm_theme *theme);
 wm_status wm_create_window(wm_context *context, const wm_window_desc *desc,

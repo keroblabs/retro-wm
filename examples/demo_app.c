@@ -11,33 +11,48 @@ static const wm_rect initial_bounds[] = {
     {60, 64, 400, 280}, {260, 205, 380, 260}, {570, 80, 330, 218}
 };
 
+static demo_colours demo_colours_for_mode(bool colour)
+{
+    if (colour) {
+        return (demo_colours){
+            .panel_background = {
+                WM_RGB(238, 241, 252), WM_RGB(250, 239, 0), WM_RGB(226, 242, 231)
+            },
+            .bar_fill = {
+                WM_RGB(68, 109, 188), WM_RGB(191, 82, 77), WM_RGB(63, 139, 102)
+            },
+            .text = WM_RGB(28, 43, 62)
+        };
+    }
+    const wm_color white = WM_RGB(255, 255, 255);
+    const wm_color black = WM_RGB(0, 0, 0);
+    return (demo_colours){
+        .panel_background = {white, white, white},
+        .bar_fill = {black, black, black},
+        .text = black
+    };
+}
+
 static void paint_panel(wm_canvas *canvas, int32_t width,
                         int32_t height, void *userdata)
 {
     const demo_panel *panel = userdata;
-    bool colour = *panel->colour;
-    const wm_color backgrounds[] = {
-        WM_RGB(238, 241, 252), WM_RGB(250, 239, 211), WM_RGB(226, 242, 231)
-    };
-    wm_color background = colour ? backgrounds[panel->kind % 3]
-                                 : WM_RGB(255, 255, 255);
-    wm_color ink = colour ? WM_RGB(28, 43, 62) : WM_RGB(0, 0, 0);
+    const demo_colours *colours = panel->colours;
+    wm_color background = colours->panel_background[panel->kind % 3];
+    wm_color ink = colours->text;
     wm_canvas_fill(canvas, (wm_rect){0, 0, width, height}, background);
     if (panel->kind == 0) {
         wm_canvas_text(canvas, 14, 14, "SOFTWARE FRAMEBUFFER", ink);
         wm_canvas_text(canvas, 14, 42, "NO SDL IN THE CORE", ink);
         wm_canvas_text(canvas, 14, 70, "DRAG THE TITLE BAR", ink);
         wm_canvas_text(canvas, 14, 98, "RESIZE AT THE CORNER", ink);
-        const wm_color colors[] = {
-            WM_RGB(68, 109, 188), WM_RGB(191, 82, 77), WM_RGB(63, 139, 102)
-        };
         for (int i = 0; i < 3; ++i) {
             wm_rect bar = {14, 140 + i * 27, width - 28, 18};
             wm_canvas_frame(canvas, bar, ink);
             wm_canvas_fill(canvas, (wm_rect){
                 bar.x + 3, bar.y + 3, (bar.width - 6) * (i + 2) / 5,
                 bar.height - 6
-            }, colour ? colors[i] : ink);
+            }, colours->bar_fill[i]);
         }
     } else if (panel->kind == 1) {
         wm_canvas_text(canvas, 14, 14,
@@ -61,7 +76,7 @@ static wm_status create_panel(demo_app *app, wm_rect bounds, const char *title,
         demo_panel *panel = &app->panels[i];
         if (panel->id == WM_NO_WINDOW) {
             panel->kind = kind;
-            panel->colour = &app->colour;
+            panel->colours = &app->colours;
             wm_window_desc desc = {title, bounds, 160, 100, paint_panel, panel};
             wm_status status = wm_create_window(&app->ui->windows, &desc, id);
             if (status == WM_OK) {
@@ -126,7 +141,10 @@ static wm_status perform_action(demo_app *app, uint32_t command)
         bool colour = command == ACTION_COLOUR;
         wm_theme theme = colour ? wm_theme_colour() : wm_theme_monochrome();
         wm_status status = wm_set_theme(&app->ui->windows, &theme);
-        if (status == WM_OK) app->colour = colour;
+        if (status == WM_OK) {
+            app->colour = colour;
+            app->colours = demo_colours_for_mode(colour);
+        }
         return status;
     }
     case ACTION_ABOUT:
@@ -213,6 +231,7 @@ wm_status demo_app_init(demo_app *app, ui_context *ui,
 {
     if (app == NULL || ui == NULL || framebuffer == NULL) return WM_ERROR_ARGUMENT;
     *app = (demo_app){.ui = ui, .colour = true, .running = true};
+    app->colours = demo_colours_for_mode(true);
     init_menu_descriptors(app);
     wm_status status = ui_init(ui, framebuffer, app->menus, DEMO_MENU_COUNT);
     if (status != WM_OK) return status;

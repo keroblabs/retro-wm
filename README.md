@@ -77,6 +77,9 @@ state, and no toolkit API knows the demo's menu command IDs.
 
 * [include/retro_types.h](include/retro_types.h): shared input, geometry, colour,
   framebuffer and status types; no platform or window-manager state.
+* [include/retro_theme.h](include/retro_theme.h) and
+  [src/retro_theme.c](src/retro_theme.c): semantic colour roles and the established
+  colour/monochrome presets, separate from renderer implementations.
 * [include/retro_wm.h](include/retro_wm.h): public C API and statically allocated
   window-manager context.
 * [src/retro_wm.c](src/retro_wm.c): window state, nonblocking interactions,
@@ -94,7 +97,7 @@ state, and no toolkit API knows the demo's menu command IDs.
   frame pacing and screenshot output. Only shared types cross this boundary.
 * [examples/demo_app.h](examples/demo_app.h) and
   [examples/demo_app.c](examples/demo_app.c): SDL-free example panels, menu
-  descriptors, command execution and application shortcuts.
+  descriptors, application-owned content colours, commands and shortcuts.
 * [examples/sdl_demo.c](examples/sdl_demo.c): thin entry point wiring the three
   state objects together; it contains no SDL calls or widget implementation.
 * [examples/demo_smoke.c](examples/demo_smoke.c): demo-specific SDL event injection
@@ -139,6 +142,46 @@ or toolkit state.
 The CMake targets follow the same boundaries: `retro_wm` is the portable toolkit,
 `retro_sdl_host` is the platform adapter, and `retro_demo_app` is the replaceable,
 SDL-free application. The executable only links and wires these components.
+
+### Theme colours
+
+`wm_theme` is defined in [retro_theme.h](include/retro_theme.h), with separate
+groups so unrelated UI elements no longer share a colour setting:
+
+| Group | Roles |
+|---|---|
+| `desktop` | Background and alternate pattern colour |
+| `window` | Frame, client background, active/inactive title backgrounds and title text |
+| `menu` | Bar background/text, active bar background/text, drop-down background/text, selected item background/text, border, separator and shadow |
+| `outline` | Foreground and alternate colour for drag/resize outlines |
+
+Menu-bar and drop-down backgrounds are **independent fields**. Both initially
+use the existing cream colour; menu selections and active window titles likewise
+retain their established blue values without sharing mutable settings.
+
+Start with `wm_theme_colour()` or `wm_theme_monochrome()`, edit individual roles,
+and apply the complete struct through `wm_set_theme`. For example, this keeps the
+current drop-down colour while showing the field to customize:
+
+```c
+wm_theme theme = wm_theme_colour();
+theme.menu.dropdown_background = WM_RGB(245, 241, 224);
+wm_status status = wm_set_theme(&ui.windows, &theme);
+if (status != WM_OK) {
+    fprintf(stderr, "Theme: %s\n", wm_status_string(status));
+}
+```
+
+Applying a theme schedules repainting of both windows and menus through the UI
+composition. Fields are now accessed through `theme.desktop`, `theme.window`,
+`theme.menu`, and `theme.outline`, replacing the old flat field names.
+
+Application content is intentionally separate: `demo_colours` owns the demo's
+panel backgrounds, text and sample-bar fills. Paint callbacks read that struct,
+not hardcoded colours. The demo's View/C controls switch both the toolkit preset
+and its application palette. No demo-specific colours are built into the toolkit.
+After editing application palette values directly, call `ui_invalidate` to
+repaint client content, just as for other application-state changes.
 
 ### Input and lifecycle
 
