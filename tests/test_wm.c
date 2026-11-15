@@ -127,6 +127,127 @@ static bool native_pixel_packing_and_stride(void)
     return true;
 }
 
+static bool packed_font_shades_transparency_and_glyph_order(void)
+{
+    fixture f;
+    CHECK(setup(&f));
+    wm_canvas canvas = {&f.framebuffer, {0, 0, WIDTH, HEIGHT}, 3, 5};
+    /* Independent pixel references cover all 16 levels and asymmetric rows. */
+    const char *rows[] = {
+        "0000000000000000", "000CC00000000E30", "002EE20000005C00",
+        "008997000000C600", "00D44D000003E100", "03E00E3000099000",
+        "08FEEF80001E2000", "0D6116D0006B0000", "3E0001E300C50000",
+        "8A0000A803E00000", "0000000000000000", "0000000000000000",
+        "0000000000000000", "0000000000000000"
+    };
+    const wm_color shades[] = {
+        WM_RGB(0, 0, 0), WM_RGB(12, 7, 3), WM_RGB(24, 14, 6), WM_RGB(36, 21, 9),
+        WM_RGB(48, 27, 13), WM_RGB(60, 34, 16), WM_RGB(72, 41, 19), WM_RGB(84, 48, 22),
+        WM_RGB(97, 55, 25), WM_RGB(109, 62, 28), WM_RGB(121, 69, 31), WM_RGB(133, 76, 34),
+        WM_RGB(145, 82, 38), WM_RGB(157, 89, 41), WM_RGB(169, 96, 44), WM_RGB(181, 103, 47)
+    };
+    const wm_color colours[] = {WM_RGB(181, 103, 47), WM_RGB(255, 255, 255), WM_RGB(0, 0, 0)};
+    const char *levels = "0123456789ABCDEF";
+    for (size_t c = 0; c < sizeof(colours) / sizeof(colours[0]); ++c) {
+        CHECK(setup(&f));
+        wm_canvas_text(&canvas, 7, 9, "A/", colours[c]);
+        unsigned seen = 0;
+        for (int32_t y = 0; y < HEIGHT; ++y) {
+            for (int32_t x = 0; x < WIDTH; ++x) {
+                unsigned level = 0;
+                if (x >= 10 && x < 26 && y >= 14 && y < 28) {
+                    const char *hex = strchr(levels, rows[y - 14][x - 10]);
+                    CHECK(hex != NULL);
+                    level = (unsigned)(hex - levels);
+                    seen |= 1u << level;
+                }
+                wm_color expected = c == 0 ? shades[level]
+                                 : c == 1 ? WM_RGB(17 * level, 17 * level, 17 * level)
+                                          : WM_RGB(0, 0, 0);
+                CHECK(pixel(&f, x, y) == (level == 0 ? GUARD : wm_color_to_pixel(expected)));
+            }
+            for (size_t x = WIDTH; x < STRIDE; ++x) {
+                CHECK(f.framebuffer.pixels[(size_t)y * STRIDE + x] == GUARD);
+            }
+        }
+        CHECK(seen == 0xffff);
+        CHECK(f.storage[0] == GUARD && f.storage[STRIDE * HEIGHT + 1] == GUARD);
+    }
+    return true;
+}
+
+static bool text_font_selection_spacing_and_fallback(void)
+{
+    fixture f;
+    CHECK(setup(&f));
+    const font_data_t *fonts[] = {&font_c8x14, &font_c12x20};
+    const wm_color ink = WM_RGB(180, 210, 240);
+    wm_canvas canvas = {&f.framebuffer, {0, 0, WIDTH, HEIGHT}, 0, 0};
+    CHECK(WM_TEXT_WIDTH == 8 && WM_TEXT_HEIGHT == 14);
+    CHECK(font_c8x14.size == 56 && font_c12x20.size == 120);
+    for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); ++i) {
+        const font_data_t *font = fonts[i];
+        CHECK(setup(&f));
+        wm_canvas_text_font(&canvas, 0, 0, "a A\n?\x1f\x80\xff", ink, font);
+        wm_canvas_text_font(&canvas, 100, 0, "A", ink, font);
+        bool lowercase_differs = false;
+        int32_t line = font->height + 4;
+        for (int32_t y = 0; y < font->height; ++y) {
+            for (int32_t x = 0; x < font->width; ++x) {
+                CHECK(pixel(&f, 2 * font->width + x, y) == pixel(&f, 100 + x, y));
+                CHECK(pixel(&f, font->width + x, y) == GUARD);
+                if (pixel(&f, x, y) != pixel(&f, 100 + x, y)) lowercase_differs = true;
+                for (int32_t c = 1; c < 4; ++c) {
+                    CHECK(pixel(&f, c * font->width + x, line + y) == pixel(&f, x, line + y));
+                }
+            }
+        }
+        CHECK(lowercase_differs);
+        for (int32_t y = font->height; y < line; ++y) {
+            for (int32_t x = 0; x < 4 * font->width; ++x) CHECK(pixel(&f, x, y) == GUARD);
+        }
+    }
+    CHECK(setup(&f));
+    wm_canvas_text_font(&canvas, 0, 0, "A", WM_RGB(255, 255, 255), &font_c12x20);
+    /* 12x20 A: full brightness at (5,1), level 2 at (4,1), level 11 at (10,12). */
+    CHECK(pixel_is(&f, 5, 1, WM_RGB(255, 255, 255)));
+    CHECK(pixel_is(&f, 4, 1, WM_RGB(34, 34, 34)));
+    CHECK(pixel_is(&f, 10, 12, WM_RGB(187, 187, 187)));
+    CHECK(pixel(&f, 0, 0) == GUARD);
+    return true;
+}
+
+static bool text_clipping_and_extreme_coordinates(void)
+{
+    fixture full, clipped;
+    CHECK(setup(&full) && setup(&clipped));
+    const font_data_t *fonts[] = {&font_c8x14, &font_c12x20};
+    const wm_rect clips[] = {{0, 0, 7, 9}, {WIDTH - 5, HEIGHT - 8, 5, 8}};
+    const int32_t origins[][2] = {{-4, -3}, {WIDTH - 5, HEIGHT - 8}};
+    for (size_t font = 0; font < sizeof(fonts) / sizeof(fonts[0]); ++font) {
+        for (size_t c = 0; c < sizeof(clips) / sizeof(clips[0]); ++c) {
+            CHECK(setup(&full) && setup(&clipped));
+            wm_canvas reference = {&full.framebuffer, {0, 0, WIDTH, HEIGHT},
+                                   origins[c][0], origins[c][1]};
+            wm_canvas canvas = {&clipped.framebuffer, clips[c], origins[c][0], origins[c][1]};
+            wm_canvas_text_font(&reference, 0, 0, "Ag", WM_RGB(200, 140, 80), fonts[font]);
+            wm_canvas_text_font(&canvas, 0, 0, "Ag", WM_RGB(200, 140, 80), fonts[font]);
+            wm_canvas_text_font(&canvas, INT32_MAX, INT32_MAX, "Ag\nAg", 0, fonts[font]);
+            wm_canvas_text_font(&canvas, INT32_MIN, INT32_MIN, "Ag\nAg", 0, fonts[font]);
+            for (int32_t y = 0; y < HEIGHT; ++y) {
+                for (int32_t x = 0; x < STRIDE; ++x) {
+                    bool inside = x >= clips[c].x && x < clips[c].x + clips[c].width &&
+                                  y >= clips[c].y && y < clips[c].y + clips[c].height;
+                    wm_pixel expected = inside ? pixel(&full, x, y) : GUARD;
+                    CHECK(pixel(&clipped, x, y) == expected);
+                }
+            }
+            CHECK(clipped.storage[0] == GUARD && clipped.storage[STRIDE * HEIGHT + 1] == GUARD);
+        }
+    }
+    return true;
+}
+
 static bool focus_and_hit_testing(void)
 {
     fixture f;
@@ -813,6 +934,9 @@ int main(void)
         bool (*run)(void);
     } tests[] = {
         {"native pixel packing and stride", native_pixel_packing_and_stride},
+        {"packed font shades, transparency and glyph order", packed_font_shades_transparency_and_glyph_order},
+        {"font selection, spacing, lowercase and fallback", text_font_selection_spacing_and_fallback},
+        {"text clipping and extreme coordinates", text_clipping_and_extreme_coordinates},
         {"focus and hit testing", focus_and_hit_testing},
         {"drag capture and clamping", dragging_captures_and_clamps},
         {"cancel restores pixels", cancelled_interactions_leave_no_pixels},

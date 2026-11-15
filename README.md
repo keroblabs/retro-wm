@@ -119,7 +119,10 @@ state, and no toolkit API knows the demo's menu command IDs.
 * [include/retro_wm.h](include/retro_wm.h): public C API and statically allocated
   window-manager context.
 * [src/retro_wm.c](src/retro_wm.c): window state, nonblocking interactions,
-  software painting, and a small built-in ASCII font.
+  software painting, and packed 4-bit ASCII font rendering.
+* [include/retro_font.h](include/retro_font.h),
+  [src/retro_font_c8x14.c](src/retro_font_c8x14.c), and
+  [src/retro_font_c12x20.c](src/retro_font_c12x20.c): font metadata and bitmap data.
 * [include/retro_menu.h](include/retro_menu.h) and
   [src/retro_menu.c](src/retro_menu.c): independent, descriptor-driven menu state,
   input handling, layout, and painting using the shared drawing/event API, with
@@ -266,9 +269,22 @@ save-behind buffers: closing/cancelling cannot leave old outlines behind.
 not a damaged-region implementation. This favors a simple, testable prototype;
 partial redraw can be added later if measurements require it.
 
-The built-in font uses 12x14 cells. Lowercase ASCII is displayed as uppercase;
-unsupported non-space characters use a question mark. This is not a Unicode
-text renderer.
+`wm_canvas_text` uses the 8x14 font, including lowercase ASCII. Menus and title
+bars always use this font; their widths and vertical padding follow
+`WM_TEXT_WIDTH` and `WM_TEXT_HEIGHT`. Use `wm_canvas_text_font` with
+`&font_c8x14` or `&font_c12x20` to select a font for client content. The demo
+uses 12x20 client text. Characters advance by the selected font width, and
+newlines advance by its height plus four pixels. Bytes outside `0x20`–`0x7f`
+use a question mark; this is not a Unicode text renderer.
+
+Each 8x14 glyph occupies 56 bytes: four bytes per row, top to bottom, with the
+left pixel in bits `[3:0]` and the next pixel in bits `[7:4]`. The 12x20 font
+uses the same packing with six bytes per row and 120 bytes per glyph. Before
+drawing a string, the renderer creates a 16-entry native-pixel palette from
+the requested text colour. Levels 1–15 scale each RGB channel by `level / 15`,
+rounded to the nearest integer; level 15 is the exact requested colour. Level
+0 leaves the existing framebuffer pixel untouched. Every theme text role
+gets its own shades through the same API, in both RGB888 and RGB565 builds.
 
 ### Menu API
 

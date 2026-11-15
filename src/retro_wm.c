@@ -44,7 +44,7 @@ static wm_rect close_rect(wm_rect bounds)
 {
     return (wm_rect){
         bounds.x + bounds.width - WM_BORDER - 20,
-        bounds.y + WM_BORDER + 4, 16, 16
+        bounds.y + WM_BORDER + (WM_TITLE_HEIGHT - 16) / 2, 16, 16
     };
 }
 
@@ -453,75 +453,80 @@ void wm_canvas_frame(wm_canvas *canvas, wm_rect rect, wm_color color)
     fill_absolute(canvas, x + rect.width - 1, y, 1, rect.height, color);
 }
 
-typedef struct {
-    char character;
-    uint8_t rows[7];
-} glyph;
+enum { TEXT_LEVELS = 16 };
 
-static const glyph font[] = {
-    { 'A', {14,17,17,31,17,17,17} }, { 'B', {30,17,17,30,17,17,30} },
-    { 'C', {14,17,16,16,16,17,14} }, { 'D', {30,17,17,17,17,17,30} },
-    { 'E', {31,16,16,30,16,16,31} }, { 'F', {31,16,16,30,16,16,16} },
-    { 'G', {14,17,16,23,17,17,14} }, { 'H', {17,17,17,31,17,17,17} },
-    { 'I', {14,4,4,4,4,4,14} }, { 'J', {7,2,2,2,2,18,12} },
-    { 'K', {17,18,20,24,20,18,17} }, { 'L', {16,16,16,16,16,16,31} },
-    { 'M', {17,27,21,21,17,17,17} }, { 'N', {17,25,25,21,19,19,17} },
-    { 'O', {14,17,17,17,17,17,14} }, { 'P', {30,17,17,30,16,16,16} },
-    { 'Q', {14,17,17,17,21,18,13} }, { 'R', {30,17,17,30,20,18,17} },
-    { 'S', {15,16,16,14,1,1,30} }, { 'T', {31,4,4,4,4,4,4} },
-    { 'U', {17,17,17,17,17,17,14} }, { 'V', {17,17,17,17,17,10,4} },
-    { 'W', {17,17,17,21,21,27,17} }, { 'X', {17,17,10,4,10,17,17} },
-    { 'Y', {17,17,10,4,4,4,4} }, { 'Z', {31,1,2,4,8,16,31} },
-    { '0', {14,17,19,21,25,17,14} }, { '1', {4,12,4,4,4,4,14} },
-    { '2', {14,17,1,2,4,8,31} }, { '3', {30,1,1,14,1,1,30} },
-    { '4', {2,6,10,18,31,2,2} }, { '5', {31,16,16,30,1,1,30} },
-    { '6', {14,16,16,30,17,17,14} }, { '7', {31,1,2,4,8,8,8} },
-    { '8', {14,17,17,14,17,17,14} }, { '9', {14,17,17,15,1,1,14} },
-    { '-', {0,0,0,31,0,0,0} }, { '.', {0,0,0,0,0,12,12} },
-    { ':', {0,12,12,0,12,12,0} }, { '/', {1,2,2,4,8,8,16} },
-    { '+', {0,4,4,31,4,4,0} }, { '=', {0,0,31,0,31,0,0} },
-    { '(', {2,4,8,8,8,4,2} }, { ')', {8,4,2,2,2,4,8} },
-    { '?', {14,17,1,2,4,0,4} }
-};
-
-static const uint8_t *glyph_rows(char character)
+static void text_palette(wm_pixel palette[TEXT_LEVELS], wm_color color)
 {
-    if (character >= 'a' && character <= 'z') {
-        character = (char)(character - 'a' + 'A');
+    uint32_t red = (color >> 16) & 0xff;
+    uint32_t green = (color >> 8) & 0xff;
+    uint32_t blue = color & 0xff;
+    for (uint32_t level = 0; level < TEXT_LEVELS; ++level) {
+        palette[level] = wm_color_to_pixel(WM_RGB(
+            (red * level + 7) / 15,
+            (green * level + 7) / 15,
+            (blue * level + 7) / 15));
     }
-    for (size_t i = 0; i < sizeof(font) / sizeof(font[0]); ++i) {
-        if (font[i].character == character) {
-            return font[i].rows;
+}
+
+static void draw_character(wm_canvas *canvas, int64_t x, int64_t y,
+                           unsigned char character, const font_data_t *font,
+                           const wm_pixel palette[TEXT_LEVELS])
+{
+    int64_t left = x, top = y;
+    int64_t right = x + font->width, bottom = y + font->height;
+    int64_t clip_right = (int64_t)canvas->clip.x + canvas->clip.width;
+    int64_t clip_bottom = (int64_t)canvas->clip.y + canvas->clip.height;
+    if (left < canvas->clip.x) left = canvas->clip.x;
+    if (top < canvas->clip.y) top = canvas->clip.y;
+    if (right > clip_right) right = clip_right;
+    if (bottom > clip_bottom) bottom = clip_bottom;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > canvas->framebuffer->width) right = canvas->framebuffer->width;
+    if (bottom > canvas->framebuffer->height) bottom = canvas->framebuffer->height;
+    if (left >= right || top >= bottom) return;
+
+    if (character < font->offset || character > 0x7f) character = '?';
+    const uint8_t *glyph = font->data + (character - font->offset) * font->size;
+    size_t row_bytes = (font->width + 1u) / 2u;
+    for (int64_t row = top; row < bottom; ++row) {
+        const uint8_t *source = glyph + (size_t)(row - y) * row_bytes;
+        wm_pixel *pixels = canvas->framebuffer->pixels +
+                           (size_t)row * canvas->framebuffer->stride_pixels;
+        for (int64_t col = left; col < right; ++col) {
+            size_t glyph_x = (size_t)(col - x);
+            uint8_t packed = source[glyph_x / 2];
+            unsigned level = (packed >> (4 * (glyph_x % 2))) & 0x0f;
+            if (level != 0) pixels[col] = palette[level];
         }
     }
-    return font[sizeof(font) / sizeof(font[0]) - 1].rows;
 }
 
 void wm_canvas_text(wm_canvas *canvas, int32_t x, int32_t y,
                     const char *text, wm_color color)
 {
+    wm_canvas_text_font(canvas, x, y, text, color, &font_c8x14);
+}
+
+void wm_canvas_text_font(wm_canvas *canvas, int32_t x, int32_t y,
+                         const char *text, wm_color color,
+                         const font_data_t *font)
+{
     assert(canvas != NULL && canvas->framebuffer != NULL && text != NULL);
+    assert(font == &font_c8x14 || font == &font_c12x20);
+    wm_pixel palette[TEXT_LEVELS];
+    text_palette(palette, color);
     int64_t cursor_x = (int64_t)canvas->origin_x + x;
     int64_t cursor_y = (int64_t)canvas->origin_y + y;
     int64_t start_x = cursor_x;
     for (; *text != '\0'; ++text) {
         if (*text == '\n') {
             cursor_x = start_x;
-            cursor_y += WM_TEXT_HEIGHT + 4;
+            cursor_y += font->height + 4;
             continue;
         }
-        if (*text != ' ') {
-            const uint8_t *rows = glyph_rows(*text);
-            for (int row = 0; row < 7; ++row) {
-                for (int col = 0; col < 5; ++col) {
-                    if ((rows[row] & (1u << (4 - col))) != 0) {
-                        fill_absolute(canvas, cursor_x + 2 * col,
-                                      cursor_y + 2 * row, 2, 2, color);
-                    }
-                }
-            }
-        }
-        cursor_x += WM_TEXT_WIDTH;
+        draw_character(canvas, cursor_x, cursor_y, (unsigned char)*text, font, palette);
+        cursor_x += font->width;
     }
 }
 
@@ -546,7 +551,8 @@ static void draw_window(wm_context *context, wm_framebuffer *framebuffer,
     wm_canvas_fill(&screen, title, title_color);
     wm_canvas title_canvas = screen;
     title_canvas.clip = (wm_rect){title.x + 5, title.y, title.width - 29, title.height};
-    wm_canvas_text(&title_canvas, title.x + 5, title.y + 5,
+    wm_canvas_text(&title_canvas, title.x + 5,
+                   title.y + (title.height - WM_TEXT_HEIGHT) / 2,
                    window->title, text_color);
 
     wm_rect client = client_rect(bounds);

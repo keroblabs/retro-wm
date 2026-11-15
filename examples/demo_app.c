@@ -42,10 +42,10 @@ static void paint_panel(wm_canvas *canvas, int32_t width,
     wm_color ink = colours->text;
     wm_canvas_fill(canvas, (wm_rect){0, 0, width, height}, background);
     if (panel->kind == 0) {
-        wm_canvas_text(canvas, 14, 14, "SOFTWARE FRAMEBUFFER", ink);
-        wm_canvas_text(canvas, 14, 42, "NO SDL IN THE CORE", ink);
-        wm_canvas_text(canvas, 14, 70, "DRAG THE TITLE BAR", ink);
-        wm_canvas_text(canvas, 14, 98, "RESIZE AT THE CORNER", ink);
+        wm_canvas_text_font(canvas, 14, 14, "Software framebuffer", ink, &font_c12x20);
+        wm_canvas_text_font(canvas, 14, 42, "No SDL in the core", ink, &font_c12x20);
+        wm_canvas_text_font(canvas, 14, 70, "Drag the title bar", ink, &font_c12x20);
+        wm_canvas_text_font(canvas, 14, 98, "Resize at the corner", ink, &font_c12x20);
         for (int i = 0; i < 3; ++i) {
             wm_rect bar = {14, 140 + i * 27, width - 28, 18};
             wm_canvas_frame(canvas, bar, ink);
@@ -55,17 +55,17 @@ static void paint_panel(wm_canvas *canvas, int32_t width,
             }, colours->bar_fill[i]);
         }
     } else if (panel->kind == 1) {
-        wm_canvas_text(canvas, 14, 14,
-                       "POINTER CAPTURE\n\nRELEASE TO COMMIT\nESC TO CANCEL\n\n"
-                       "TAB / SHIFT+TAB\nCTRL+W CLOSES", ink);
+        wm_canvas_text_font(canvas, 14, 14,
+                            "Pointer capture\n\nRelease to commit\nEsc to cancel\n\n"
+                            "Tab / Shift+Tab\nCtrl+W closes", ink, &font_c12x20);
     } else if (panel->kind == 2) {
-        wm_canvas_text(canvas, 14, 14,
-                       "MENU BAR / F10\n\nN - NEW WINDOW\nC - COLOUR THEME\n"
-                       "Q - QUIT HOST\n\nRISC-V BACKEND NEXT", ink);
+        wm_canvas_text_font(canvas, 14, 14,
+                            "Menu bar / F10\n\nN - New window\nC - Colour theme\n"
+                            "Q - Quit host\n\nRISC-V backend next", ink, &font_c12x20);
     } else {
-        wm_canvas_text(canvas, 14, 14,
-                       "ANOTHER CLIENT\n\nCONTENT IS CLIPPED\nTO THIS WINDOW.\n\n"
-                       "TRY OVERLAPPING\nAND CLOSING WINDOWS.", ink);
+        wm_canvas_text_font(canvas, 14, 14,
+                            "Another client\n\nContent is clipped\nTo this window.\n\n"
+                            "Try overlapping\nAnd closing windows.", ink, &font_c12x20);
     }
 }
 

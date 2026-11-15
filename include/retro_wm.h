@@ -3,17 +3,18 @@
 
 #include "retro_types.h"
 #include "retro_theme.h"
+#include "retro_font.h"
 
 enum {
     WM_MAX_WINDOWS = 8,
     WM_TITLE_CAPACITY = 48,
     WM_BORDER = 2,
-    WM_TITLE_HEIGHT = 24,
+    WM_TEXT_WIDTH = 8,
+    WM_TEXT_HEIGHT = 14,
+    WM_TITLE_HEIGHT = WM_TEXT_HEIGHT + 10,
     WM_RESIZE_SIZE = 14,
     WM_MIN_WIDTH = 96,
-    WM_MIN_HEIGHT = 64,
-    WM_TEXT_WIDTH = 12,
-    WM_TEXT_HEIGHT = 14
+    WM_MIN_HEIGHT = 64
 };
 
 typedef uint32_t wm_id;
@@ -113,5 +114,12 @@ void wm_canvas_fill(wm_canvas *canvas, wm_rect rect, wm_color color);
 void wm_canvas_frame(wm_canvas *canvas, wm_rect rect, wm_color color);
 void wm_canvas_text(wm_canvas *canvas, int32_t x, int32_t y,
                     const char *text, wm_color color);
+/* Select font_c8x14 or font_c12x20; wm_canvas_text defaults to font_c8x14.
+ * Levels 1..15 scale each RGB channel by level/15; level 0 is transparent.
+ * Text advances by the font width; newlines advance by its height plus 4.
+ * Bytes outside 0x20..0x7f are drawn as '?'. */
+void wm_canvas_text_font(wm_canvas *canvas, int32_t x, int32_t y,
+                         const char *text, wm_color color,
+                         const font_data_t *font);
 
 #endif
