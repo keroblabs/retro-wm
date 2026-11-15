@@ -1,0 +1,13 @@
+{
+    "cmake.sourceDirectory": [
+         "/home/marcio/Projects/desktop/retro-wm",
+    ],
+    "files.associations": {
+        ".fantomasignore": "ignore",
+        "keyboard_controller.h": "c"
+    },
+    "cmake.debugConfig": {
+        "preLaunchTask": "setup-wayland-env",
+        "envFile": "${workspaceFolder}/.wayland.env"
+    }
+}

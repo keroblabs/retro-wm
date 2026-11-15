@@ -421,11 +421,12 @@ static void fill_absolute(wm_canvas *canvas, int64_t x, int64_t y,
     if (y < canvas->clip.y) y = canvas->clip.y;
     if (right > clip_right) right = clip_right;
     if (bottom > clip_bottom) bottom = clip_bottom;
+    wm_pixel native = wm_color_to_pixel(color);
     for (int64_t row = y; row < bottom; ++row) {
-        uint32_t *pixels = canvas->framebuffer->pixels +
+        wm_pixel *pixels = canvas->framebuffer->pixels +
                            (size_t)row * canvas->framebuffer->stride_pixels;
         for (int64_t col = x; col < right; ++col) {
-            pixels[col] = color;
+            pixels[col] = native;
         }
     }
 }
@@ -606,16 +607,16 @@ wm_status wm_render(wm_context *context, wm_framebuffer *framebuffer)
         framebuffer->width != context->width ||
         framebuffer->height != context->height ||
         framebuffer->stride_pixels < (size_t)context->width ||
-        framebuffer->stride_pixels > SIZE_MAX / sizeof(uint32_t) /
+        framebuffer->stride_pixels > SIZE_MAX / sizeof(wm_pixel) /
                                      (size_t)context->height) {
         return WM_ERROR_ARGUMENT;
     }
+    wm_pixel background = wm_color_to_pixel(context->theme.desktop.background);
+    wm_pixel alternate = wm_color_to_pixel(context->theme.desktop.alternate_background);
     for (int32_t y = 0; y < context->height; ++y) {
-        uint32_t *row = framebuffer->pixels + (size_t)y * framebuffer->stride_pixels;
+        wm_pixel *row = framebuffer->pixels + (size_t)y * framebuffer->stride_pixels;
         for (int32_t x = 0; x < context->width; ++x) {
-            row[x] = ((x ^ y) & 1) == 0
-                   ? context->theme.desktop.background
-                   : context->theme.desktop.alternate_background;
+            row[x] = ((x ^ y) & 1) == 0 ? background : alternate;
         }
     }
     for (size_t i = 0; i < context->count; ++i) {

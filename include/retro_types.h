@@ -5,11 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef uint32_t wm_color;
-
-#define WM_RGB(r, g, b) \
-    (UINT32_C(0xff000000) | ((uint32_t)(r) << 16) | \
-     ((uint32_t)(g) << 8) | (uint32_t)(b))
+#include "retro_pixel.h"
 
 typedef enum {
     WM_OK,
@@ -23,7 +19,7 @@ typedef struct {
 } wm_rect;
 
 typedef struct {
-    uint32_t *pixels;
+    wm_pixel *pixels;
     int32_t width, height;
     size_t stride_pixels;
 } wm_framebuffer;

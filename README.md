@@ -24,6 +24,40 @@ The demo opens at 960x640 logical pixels. The host window can be resized; SDL
 scales/letterboxes the framebuffer and maps pointer input to logical coordinates.
 Colour is enabled by default.
 
+### Compile-time pixel format
+
+Select the framebuffer format when configuring the build:
+
+```sh
+cmake -S . -B build-rgb565 -DRETRO_WM_PIXEL_FORMAT=RGB565 -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-rgb565
+ctest --test-dir build-rgb565 --output-on-failure
+./build-rgb565/retro_wm_demo
+```
+
+`RETRO_WM_PIXEL_FORMAT=RGB888` is the default and preserves the existing layout:
+
+| Selection | `wm_pixel` storage | Native layout |
+|---|---|---|
+| `RGB565` | `uint16_t`, 2 bytes | `rrrrrggggggbbbbb` |
+| `RGB888` | `uint32_t`, 4 bytes | `0xAARRGGBB`, normally opaque alpha |
+
+RGB888 means eight bits per RGB channel in the existing **32-bit word**, not
+packed 24-bit storage. At 960x640 with no row padding, the framebuffer occupies
+1,228,800 bytes in RGB565 or 2,457,600 bytes in RGB888.
+
+The public [retro_pixel.h](include/retro_pixel.h) macro is `WM_PIXEL_FORMAT`,
+set to `WM_PIXEL_FORMAT_RGB565` or `WM_PIXEL_FORMAT_RGB888`. CMake exports this
+definition through both toolkit and SDL-adapter targets. Without CMake, pass
+`-DWM_PIXEL_FORMAT=WM_PIXEL_FORMAT_RGB565` consistently to every translation unit,
+or omit it for RGB888. Unsupported formats fail configuration/compilation.
+Rebuild all components when changing formats; do not mix libraries compiled
+with different pixel settings.
+
+This is not a runtime setting. C/View still switch colour palettes, independently
+of pixel storage. Logical `wm_color` values and `WM_RGB` remain eight-bit-channel
+colours in either build; the renderer packs them to RGB565 when writing pixels.
+
 Controls:
 
 | Input | Action |
@@ -77,6 +111,8 @@ state, and no toolkit API knows the demo's menu command IDs.
 
 * [include/retro_types.h](include/retro_types.h): shared input, geometry, colour,
   framebuffer and status types; no platform or window-manager state.
+* [include/retro_pixel.h](include/retro_pixel.h): compile-time pixel selection,
+  native storage type and logical-colour packing.
 * [include/retro_theme.h](include/retro_theme.h) and
   [src/retro_theme.c](src/retro_theme.c): semantic colour roles and the established
   colour/monochrome presets, separate from renderer implementations.
@@ -211,9 +247,14 @@ objects; debug builds assert those preconditions.
 
 ### Framebuffer and painting
 
-The caller supplies a buffer with at least `stride_pixels * height` pixels.
-Each native `uint32_t` pixel has value `0xAARRGGBB`, normally with opaque alpha.
-Stride is in **pixels**, can exceed width, and padding is not modified.
+The caller supplies at least `stride_pixels * height` elements of `wm_pixel`.
+Use `sizeof(wm_pixel)` for allocation and byte-pitch calculations; it is two
+bytes in RGB565 builds or four in RGB888 builds. Pixel words use native byte
+order. Stride is in **pixels**, can exceed width, and padding is not modified.
+Drawing APIs accept logical `wm_color` values and perform storage conversion,
+so clients and themes do not need format-specific colour definitions.
+Use `wm_color_to_pixel` when writing framebuffer pixels directly; do not cast
+an array of logical colours to a native pixel array.
 
 Client callbacks receive a content-local canvas clipped to their content area,
 and repaint synchronously. Clients own their application state, not persistent
@@ -295,6 +336,9 @@ cmake --build build-sanitize
 ctest --test-dir build-sanitize --output-on-failure
 ```
 
+For the RGB565 sanitizer variant, add `-DRETRO_WM_PIXEL_FORMAT=RGB565` and use a
+separate build directory such as `build-rgb565-sanitize`.
+
 ## Later RISC-V integration
 
 Keep the toolkit/composition and application APIs; replace only
@@ -303,7 +347,8 @@ Keep the toolkit/composition and application APIs; replace only
 * Supply framebuffer storage and feed normalized input events.
 * Supply a hardware cursor or software pointer overlay; the SDL demo uses the
   host's native cursor.
-* Convert/copy pixels if the display uses RGB565 or another native format.
+* Select RGB565/RGB888 to match the framebuffer. Convert/copy only if the
+  hardware's format or byte order differs from the selected native pixel words.
 * Handle display pitch, cache maintenance, synchronization and presentation in
   the adapter.
 * Provide the usual C runtime memory/string functions and a suitable toolchain.

@@ -7,7 +7,7 @@
 #include <string.h>
 
 enum { WIDTH = 320, HEIGHT = 240, STRIDE = WIDTH + 7 };
-#define GUARD UINT32_C(0x12345678)
+#define GUARD ((wm_pixel)UINT16_C(0xa55a))
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -27,7 +27,7 @@ enum { WIDTH = 320, HEIGHT = 240, STRIDE = WIDTH + 7 };
 
 typedef struct {
     wm_context wm;
-    uint32_t storage[STRIDE * HEIGHT + 2];
+    wm_pixel storage[STRIDE * HEIGHT + 2];
     wm_framebuffer framebuffer;
 } fixture;
 
@@ -72,19 +72,59 @@ static wm_status key(fixture *f, wm_key code, uint32_t modifiers)
     return wm_handle_event(&f->wm, &event, NULL);
 }
 
-static uint32_t pixel(const fixture *f, int32_t x, int32_t y)
+static wm_pixel pixel(const fixture *f, int32_t x, int32_t y)
 {
     return f->framebuffer.pixels[(size_t)y * STRIDE + (size_t)x];
 }
 
+static bool pixel_is(const fixture *f, int32_t x, int32_t y, wm_color colour)
+{
+    return pixel(f, x, y) == wm_color_to_pixel(colour);
+}
+
 static bool has_colour(const fixture *f, wm_rect rect, wm_color colour)
 {
+    wm_pixel native = wm_color_to_pixel(colour);
     for (int32_t y = rect.y; y < rect.y + rect.height; ++y) {
         for (int32_t x = rect.x; x < rect.x + rect.width; ++x) {
-            if (pixel(f, x, y) == colour) return true;
+            if (pixel(f, x, y) == native) return true;
         }
     }
     return false;
+}
+
+static bool native_pixel_packing_and_stride(void)
+{
+    fixture f;
+    CHECK(setup(&f));
+    const wm_color colours[] = {
+        WM_RGB(0, 0, 0), WM_RGB(255, 255, 255), WM_RGB(171, 205, 239),
+        WM_RGB(7, 3, 7), WM_RGB(8, 4, 8),
+        WM_RGB(255, 0, 0), WM_RGB(0, 255, 0), WM_RGB(0, 0, 255)
+    };
+#if WM_PIXEL_FORMAT == WM_PIXEL_FORMAT_RGB565
+    const wm_pixel expected[] = {
+        0x0000, 0xffff, 0xae7d, 0x0000, 0x0821, 0xf800, 0x07e0, 0x001f
+    };
+#else
+    const wm_pixel expected[] = {
+        0xff000000, 0xffffffff, 0xffabcdef, 0xff070307,
+        0xff080408, 0xffff0000, 0xff00ff00, 0xff0000ff
+    };
+#endif
+    wm_canvas canvas = {&f.framebuffer, {0, 0, WIDTH, HEIGHT}, 0, 0};
+    size_t count = sizeof(colours) / sizeof(colours[0]);
+    for (size_t i = 0; i < count; ++i) {
+        int32_t x = WIDTH - (int32_t)count + (int32_t)i;
+        wm_canvas_fill(&canvas, (wm_rect){x, HEIGHT - 1, 1, 1}, colours[i]);
+        CHECK(pixel(&f, x, HEIGHT - 1) == expected[i]);
+    }
+    CHECK(pixel(&f, 0, HEIGHT - 1) == GUARD);
+    for (size_t x = WIDTH; x < STRIDE; ++x) {
+        CHECK(f.framebuffer.pixels[(HEIGHT - 1) * STRIDE + x] == GUARD);
+    }
+    CHECK(f.storage[0] == GUARD && f.storage[STRIDE * HEIGHT + 1] == GUARD);
+    return true;
 }
 
 static bool focus_and_hit_testing(void)
@@ -99,13 +139,13 @@ static bool focus_and_hit_testing(void)
     CHECK_OK(wm_hit_test(&f.wm, 100, 110, &hit));
     CHECK(hit.window == b && hit.part == WM_HIT_CLIENT);
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == blue);
+    CHECK(pixel_is(&f, 100, 110, blue));
     CHECK_OK(pointer(&f, WM_EVENT_POINTER_DOWN, 30, 70));
     CHECK(wm_front_window(&f.wm) == a && !wm_has_capture(&f.wm));
     CHECK_OK(wm_hit_test(&f.wm, 100, 110, &hit));
     CHECK(hit.window == a);
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == red);
+    CHECK(pixel_is(&f, 100, 110, red));
     CHECK(wm_window_count(&f.wm) == 2);
     return true;
 }
@@ -149,7 +189,7 @@ static bool cancelled_interactions_leave_no_pixels(void)
     wm_id id;
     CHECK_OK(add_window(&f, (wm_rect){20, 20, 180, 130}, &color, &id));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    uint32_t before[STRIDE * HEIGHT + 2];
+    wm_pixel before[STRIDE * HEIGHT + 2];
     memcpy(before, f.storage, sizeof(before));
     CHECK_OK(pointer(&f, WM_EVENT_POINTER_DOWN, 60, 30));
     CHECK_OK(pointer(&f, WM_EVENT_POINTER_MOVE, 130, 100));
@@ -243,15 +283,15 @@ static bool closing_repaints_exposed_content(void)
     CHECK_OK(add_window(&f, (wm_rect){20, 20, 200, 170}, &red, &a));
     CHECK_OK(add_window(&f, (wm_rect){70, 60, 200, 150}, &blue, &b));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == blue);
+    CHECK(pixel_is(&f, 100, 110, blue));
     CHECK_OK(wm_close_window(&f.wm, b));
     CHECK(wm_needs_repaint(&f.wm));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == red);
+    CHECK(pixel_is(&f, 100, 110, red));
     CHECK(!wm_needs_repaint(&f.wm));
     CHECK_OK(wm_close_window(&f.wm, a));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 100, 110) == f.wm.theme.desktop.background);
+    CHECK(pixel_is(&f, 100, 110, f.wm.theme.desktop.background));
     return true;
 }
 
@@ -279,10 +319,10 @@ static bool client_clipping_stride_and_colour(void)
     CHECK_OK(wm_create_window(&f.wm, &desc, &id));
     wm_theme theme = wm_theme_colour();
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 0, 0) == theme.desktop.background);
-    CHECK(pixel(&f, 20, 20) == theme.window.frame);
-    CHECK(pixel(&f, 24, 24) == theme.window.active_title_background);
-    CHECK(pixel(&f, 30, 70) == color);
+    CHECK(pixel_is(&f, 0, 0, theme.desktop.background));
+    CHECK(pixel_is(&f, 20, 20, theme.window.frame));
+    CHECK(pixel_is(&f, 24, 24, theme.window.active_title_background));
+    CHECK(pixel_is(&f, 30, 70, color));
     CHECK(f.storage[0] == GUARD);
     CHECK(f.storage[STRIDE * HEIGHT + 1] == GUARD);
     for (int y = 0; y < HEIGHT; ++y) {
@@ -293,9 +333,9 @@ static bool client_clipping_stride_and_colour(void)
     wm_theme monochrome = wm_theme_monochrome();
     CHECK_OK(wm_set_theme(&f.wm, &monochrome));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
-    CHECK(pixel(&f, 0, 0) == monochrome.desktop.background);
-    CHECK(pixel(&f, 24, 24) == monochrome.window.active_title_background);
-    CHECK(pixel(&f, 30, 70) == color);
+    CHECK(pixel_is(&f, 0, 0, monochrome.desktop.background));
+    CHECK(pixel_is(&f, 24, 24, monochrome.window.active_title_background));
+    CHECK(pixel_is(&f, 30, 70, color));
     return true;
 }
 
@@ -447,7 +487,7 @@ static bool menu_rendering_and_dismissal_restore_the_scene(void)
     wm_theme theme = wm_theme_colour();
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
     CHECK_OK(rm_render(&menus.menu, &f.framebuffer, &theme));
-    uint32_t before[STRIDE * HEIGHT + 2];
+    wm_pixel before[STRIDE * HEIGHT + 2];
     memcpy(before, f.storage, sizeof(before));
     rm_result result;
     CHECK_OK(menu_key(&menus, WM_KEY_F10, &result));
@@ -457,16 +497,16 @@ static bool menu_rendering_and_dismissal_restore_the_scene(void)
     CHECK(memcmp(before, f.storage, sizeof(before)) != 0);
     wm_rect row;
     CHECK_OK(rm_get_item_bounds(&menus.menu, 0, 0, &row));
-    CHECK(pixel(&f, row.x + 1, row.y + 1) == theme.menu.selected_item_background);
+    CHECK(pixel_is(&f, row.x + 1, row.y + 1, theme.menu.selected_item_background));
     CHECK_OK(rm_get_item_bounds(&menus.menu, 0, 3, &row));
     int32_t check_x = row.x + 6;
     int32_t check_y = row.y + (row.height - WM_TEXT_HEIGHT) / 2 + 5;
-    CHECK(pixel(&f, check_x, check_y) == theme.menu.dropdown_text);
+    CHECK(pixel_is(&f, check_x, check_y, theme.menu.dropdown_text));
     menus.file_items[3].checked = false;
     rm_invalidate(&menus.menu);
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
     CHECK_OK(rm_render(&menus.menu, &f.framebuffer, &theme));
-    CHECK(pixel(&f, check_x, check_y) == theme.menu.dropdown_background);
+    CHECK(pixel_is(&f, check_x, check_y, theme.menu.dropdown_background));
     CHECK_OK(menu_key(&menus, WM_KEY_ESCAPE, &result));
     CHECK_OK(wm_render(&f.wm, &f.framebuffer));
     CHECK_OK(rm_render(&menus.menu, &f.framebuffer, &theme));
@@ -609,10 +649,10 @@ static bool ui_composes_framebuffer_views_and_preserves_valid_state(void)
     CHECK_OK(wm_create_window(&ui.windows, &desc, &id));
     CHECK_OK(ui_render(&ui));
     wm_theme theme = wm_theme_colour();
-    CHECK(pixel(&f, 0, 0) == theme.menu.bar_background);
-    CHECK(pixel(&f, 0, RM_BAR_HEIGHT) == theme.window.frame);
-    CHECK(pixel(&f, 10, RM_BAR_HEIGHT + WM_BORDER + WM_TITLE_HEIGHT + 3) == color);
-    uint32_t before[STRIDE * HEIGHT + 2];
+    CHECK(pixel_is(&f, 0, 0, theme.menu.bar_background));
+    CHECK(pixel_is(&f, 0, RM_BAR_HEIGHT, theme.window.frame));
+    CHECK(pixel_is(&f, 10, RM_BAR_HEIGHT + WM_BORDER + WM_TITLE_HEIGHT + 3, color));
+    wm_pixel before[STRIDE * HEIGHT + 2];
     memcpy(before, f.storage, sizeof(before));
     ui_result result;
     wm_event event = {.type = WM_EVENT_KEY_DOWN, .key = WM_KEY_F10};
@@ -651,13 +691,13 @@ static bool menu_theme_roles_are_independent(void)
     CHECK_OK(wm_create_window(&ui.windows, &desc, &id));
     wm_theme theme = wm_theme_colour();
     theme.menu = (wm_menu_colours){
-        .bar_background = WM_RGB(11, 21, 31), .bar_text = WM_RGB(12, 22, 32),
-        .active_bar_background = WM_RGB(13, 23, 33), .active_bar_text = WM_RGB(14, 24, 34),
-        .dropdown_background = WM_RGB(15, 25, 35), .dropdown_text = WM_RGB(16, 26, 36),
-        .selected_item_background = WM_RGB(17, 27, 37),
-        .selected_item_text = WM_RGB(18, 28, 38),
-        .border = WM_RGB(19, 29, 39), .separator = WM_RGB(20, 30, 40),
-        .shadow = WM_RGB(21, 31, 41)
+        .bar_background = WM_RGB(16, 32, 48), .bar_text = WM_RGB(32, 64, 96),
+        .active_bar_background = WM_RGB(48, 96, 144), .active_bar_text = WM_RGB(64, 128, 192),
+        .dropdown_background = WM_RGB(80, 160, 240), .dropdown_text = WM_RGB(96, 192, 16),
+        .selected_item_background = WM_RGB(112, 224, 64),
+        .selected_item_text = WM_RGB(128, 16, 112),
+        .border = WM_RGB(144, 48, 160), .separator = WM_RGB(160, 80, 208),
+        .shadow = WM_RGB(176, 112, 0)
     };
     CHECK_OK(wm_set_theme(&ui.windows, &theme));
     wm_event event = {.type = WM_EVENT_KEY_DOWN, .key = WM_KEY_F10};
@@ -671,7 +711,7 @@ static bool menu_theme_roles_are_independent(void)
     CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 0, &selected));
     CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 3, &ordinary));
     CHECK_OK(rm_get_item_bounds(&ui.menus, 0, 1, &separator));
-    CHECK(pixel(&f, WIDTH - 5, 10) == theme.menu.bar_background);
+    CHECK(pixel_is(&f, WIDTH - 5, 10, theme.menu.bar_background));
     CHECK(has_colour(&f, file.button, theme.menu.active_bar_background));
     CHECK(has_colour(&f, file.button, theme.menu.active_bar_text));
     CHECK(has_colour(&f, view.button, theme.menu.bar_text));
@@ -679,12 +719,12 @@ static bool menu_theme_roles_are_independent(void)
     CHECK(has_colour(&f, selected, theme.menu.selected_item_text));
     CHECK(has_colour(&f, ordinary, theme.menu.dropdown_background));
     CHECK(has_colour(&f, ordinary, theme.menu.dropdown_text));
-    CHECK(pixel(&f, file.popup.x, file.popup.y) == theme.menu.border);
-    CHECK(pixel(&f, separator.x + separator.width / 2,
-                 separator.y + separator.height / 2) == theme.menu.separator);
-    CHECK(pixel(&f, file.popup.x + file.popup.width + 1,
-                 file.popup.y + file.popup.height - 1) == theme.menu.shadow);
-    CHECK(pixel(&f, 163, 133 + RM_BAR_HEIGHT) == theme.window.active_title_background);
+    CHECK(pixel_is(&f, file.popup.x, file.popup.y, theme.menu.border));
+    CHECK(pixel_is(&f, separator.x + separator.width / 2,
+                   separator.y + separator.height / 2, theme.menu.separator));
+    CHECK(pixel_is(&f, file.popup.x + file.popup.width + 1,
+                   file.popup.y + file.popup.height - 1, theme.menu.shadow));
+    CHECK(pixel_is(&f, 163, 133 + RM_BAR_HEIGHT, theme.window.active_title_background));
     return true;
 }
 
@@ -703,27 +743,27 @@ static bool window_desktop_and_outline_theme_roles_are_independent(void)
     desc.bounds.x = 175;
     CHECK_OK(wm_create_window(&ui.windows, &desc, &second));
     wm_theme theme = wm_theme_colour();
-    theme.desktop = (wm_desktop_colours){WM_RGB(31, 41, 51), WM_RGB(32, 42, 52)};
+    theme.desktop = (wm_desktop_colours){WM_RGB(32, 64, 96), WM_RGB(48, 96, 144)};
     theme.window = (wm_window_colours){
-        .frame = WM_RGB(33, 43, 53), .client_background = WM_RGB(34, 44, 54),
-        .active_title_background = WM_RGB(35, 45, 55),
-        .inactive_title_background = WM_RGB(36, 46, 56),
-        .active_title_text = WM_RGB(37, 47, 57), .inactive_title_text = WM_RGB(38, 48, 58)
+        .frame = WM_RGB(64, 128, 192), .client_background = WM_RGB(80, 160, 224),
+        .active_title_background = WM_RGB(96, 192, 32),
+        .inactive_title_background = WM_RGB(112, 224, 64),
+        .active_title_text = WM_RGB(128, 16, 96), .inactive_title_text = WM_RGB(144, 48, 128)
     };
-    theme.outline = (wm_outline_colours){WM_RGB(39, 49, 59), WM_RGB(40, 50, 60)};
+    theme.outline = (wm_outline_colours){WM_RGB(160, 80, 160), WM_RGB(176, 112, 192)};
     CHECK_OK(wm_set_theme(&ui.windows, &theme));
     CHECK_OK(ui_render(&ui));
-    CHECK(pixel(&f, 0, RM_BAR_HEIGHT) == theme.desktop.background);
-    CHECK(pixel(&f, 1, RM_BAR_HEIGHT) == theme.desktop.alternate_background);
-    CHECK(pixel(&f, 10, 40 + RM_BAR_HEIGHT) == theme.window.frame);
-    CHECK(pixel(&f, 20, 90 + RM_BAR_HEIGHT) == theme.window.client_background);
-    CHECK(pixel(&f, 13, 43 + RM_BAR_HEIGHT) == theme.window.inactive_title_background);
-    CHECK(pixel(&f, 178, 43 + RM_BAR_HEIGHT) == theme.window.active_title_background);
+    CHECK(pixel_is(&f, 0, RM_BAR_HEIGHT, theme.desktop.background));
+    CHECK(pixel_is(&f, 1, RM_BAR_HEIGHT, theme.desktop.alternate_background));
+    CHECK(pixel_is(&f, 10, 40 + RM_BAR_HEIGHT, theme.window.frame));
+    CHECK(pixel_is(&f, 20, 90 + RM_BAR_HEIGHT, theme.window.client_background));
+    CHECK(pixel_is(&f, 13, 43 + RM_BAR_HEIGHT, theme.window.inactive_title_background));
+    CHECK(pixel_is(&f, 178, 43 + RM_BAR_HEIGHT, theme.window.active_title_background));
     CHECK(has_colour(&f, (wm_rect){12, 42 + RM_BAR_HEIGHT, 100, WM_TITLE_HEIGHT},
                       theme.window.inactive_title_text));
     CHECK(has_colour(&f, (wm_rect){177, 42 + RM_BAR_HEIGHT, 100, WM_TITLE_HEIGHT},
                       theme.window.active_title_text));
-    CHECK(pixel(&f, WIDTH - 2, 10) == theme.menu.bar_background);
+    CHECK(pixel_is(&f, WIDTH - 2, 10, theme.menu.bar_background));
     wm_event event = {
         .type = WM_EVENT_POINTER_DOWN, .button = WM_BUTTON_PRIMARY,
         .x = 40, .y = 50 + RM_BAR_HEIGHT
@@ -735,8 +775,8 @@ static bool window_desktop_and_outline_theme_roles_are_independent(void)
     event.y = 60 + RM_BAR_HEIGHT;
     CHECK_OK(ui_handle_event(&ui, &event, &result));
     CHECK_OK(ui_render(&ui));
-    CHECK(pixel(&f, 40, 50 + RM_BAR_HEIGHT) == theme.outline.foreground);
-    CHECK(pixel(&f, 44, 50 + RM_BAR_HEIGHT) == theme.outline.alternate);
+    CHECK(pixel_is(&f, 40, 50 + RM_BAR_HEIGHT, theme.outline.foreground));
+    CHECK(pixel_is(&f, 44, 50 + RM_BAR_HEIGHT, theme.outline.alternate));
     return true;
 }
 
@@ -772,6 +812,7 @@ int main(void)
         const char *name;
         bool (*run)(void);
     } tests[] = {
+        {"native pixel packing and stride", native_pixel_packing_and_stride},
         {"focus and hit testing", focus_and_hit_testing},
         {"drag capture and clamping", dragging_captures_and_clamps},
         {"cancel restores pixels", cancelled_interactions_leave_no_pixels},

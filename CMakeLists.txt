@@ -3,6 +3,17 @@ project(retro_wm VERSION 0.1.0 LANGUAGES C)
 
 option(RETRO_WM_BUILD_DEMO "Build the SDL2 host" ON)
 option(RETRO_WM_SANITIZE "Enable address and undefined-behavior sanitizers" OFF)
+set(RETRO_WM_PIXEL_FORMAT "RGB888" CACHE STRING "Framebuffer pixel format: RGB565 or RGB888")
+set_property(CACHE RETRO_WM_PIXEL_FORMAT PROPERTY STRINGS RGB565 RGB888)
+
+if(RETRO_WM_PIXEL_FORMAT STREQUAL "RGB565")
+    set(RETRO_WM_PIXEL_DEFINE WM_PIXEL_FORMAT_RGB565)
+elseif(RETRO_WM_PIXEL_FORMAT STREQUAL "RGB888")
+    set(RETRO_WM_PIXEL_DEFINE WM_PIXEL_FORMAT_RGB888)
+else()
+    message(FATAL_ERROR "RETRO_WM_PIXEL_FORMAT must be RGB565 or RGB888")
+endif()
+message(STATUS "Framebuffer pixel format: ${RETRO_WM_PIXEL_FORMAT}")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -10,6 +21,8 @@ set(CMAKE_C_EXTENSIONS OFF)
 include(CTest)
 
 add_library(retro_build_options INTERFACE)
+target_compile_definitions(retro_build_options INTERFACE
+    WM_PIXEL_FORMAT=${RETRO_WM_PIXEL_DEFINE})
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(retro_build_options INTERFACE -Wall -Wextra -Wpedantic -Werror)
     if(RETRO_WM_SANITIZE)
@@ -35,7 +48,7 @@ if(RETRO_WM_BUILD_DEMO)
     pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
     add_library(retro_sdl_host STATIC platform/sdl/sdl_host.c)
     target_include_directories(retro_sdl_host PUBLIC platform/sdl include)
-    target_link_libraries(retro_sdl_host PRIVATE retro_build_options PkgConfig::SDL2)
+    target_link_libraries(retro_sdl_host PUBLIC retro_build_options PRIVATE PkgConfig::SDL2)
 
     add_executable(retro_wm_demo examples/sdl_demo.c examples/demo_smoke.c)
     target_link_libraries(retro_wm_demo PRIVATE

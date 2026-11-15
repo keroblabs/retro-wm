@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "./platform/**",
+                "./include/**",
+                "./src/**",
+                "./tests/**",
+                "./tools/**",
+                "./examples/**",
+                "/home/marcio/Tools/SDL/build/include",
+                "/home/marcio/Tools/SDL/build/include/SDL2",
+                "/home/marcio/Tools/SDL/build/include-config-/SDL2",
+                "/home/marcio/Tools/verilator/include"
+            ],
+            "defines": [
+                "_USE_SCREEN_WIDTH=1280",
+                "_USE_SCREEN_HEIGHT=800",
+                "_USE_LINUX"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}

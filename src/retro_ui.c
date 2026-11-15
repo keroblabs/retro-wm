@@ -9,7 +9,7 @@ wm_status ui_init(ui_context *context, const wm_framebuffer *framebuffer,
         framebuffer->width < WM_MIN_WIDTH ||
         framebuffer->height < WM_MIN_HEIGHT + RM_BAR_HEIGHT ||
         framebuffer->stride_pixels < (size_t)framebuffer->width ||
-        framebuffer->stride_pixels > SIZE_MAX / sizeof(uint32_t) /
+        framebuffer->stride_pixels > SIZE_MAX / sizeof(wm_pixel) /
                                      (size_t)framebuffer->height) {
         return WM_ERROR_ARGUMENT;
     }

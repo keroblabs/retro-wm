@@ -9,6 +9,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if WM_PIXEL_FORMAT == WM_PIXEL_FORMAT_RGB565
+#define SDL_FRAMEBUFFER_FORMAT SDL_PIXELFORMAT_RGB565
+#else
+#define SDL_FRAMEBUFFER_FORMAT SDL_PIXELFORMAT_ARGB8888
+#endif
+
 static bool check_sdl(int result, const char *operation)
 {
     if (result < 0) {
@@ -21,8 +27,9 @@ static bool check_sdl(int result, const char *operation)
 bool sdl_host_init(sdl_host *host, const sdl_host_config *config)
 {
     if (host == NULL || config == NULL || config->title == NULL ||
-        config->width < 2 || config->height < 2 || config->width > INT_MAX / 4 ||
-        (size_t)config->height > SIZE_MAX / sizeof(uint32_t) / (size_t)config->width) {
+        config->width < 2 || config->height < 2 ||
+        config->width > INT_MAX / (int)sizeof(wm_pixel) ||
+        (size_t)config->height > SIZE_MAX / sizeof(wm_pixel) / (size_t)config->width) {
         fprintf(stderr, "Invalid SDL host configuration\n");
         return false;
     }
@@ -51,7 +58,7 @@ bool sdl_host_init(sdl_host *host, const sdl_host_config *config)
                    "set logical display size")) {
         goto fail;
     }
-    host->texture = SDL_CreateTexture(host->renderer, SDL_PIXELFORMAT_ARGB8888,
+    host->texture = SDL_CreateTexture(host->renderer, SDL_FRAMEBUFFER_FORMAT,
                                       SDL_TEXTUREACCESS_STREAMING,
                                       config->width, config->height);
     if (host->texture == NULL) {
@@ -63,7 +70,7 @@ bool sdl_host_init(sdl_host *host, const sdl_host_config *config)
         goto fail;
     }
     host->framebuffer = (wm_framebuffer){
-        calloc((size_t)config->width * (size_t)config->height, sizeof(uint32_t)),
+        calloc((size_t)config->width * (size_t)config->height, sizeof(wm_pixel)),
         config->width, config->height, (size_t)config->width
     };
     if (host->framebuffer.pixels == NULL) {
@@ -187,7 +194,7 @@ bool sdl_host_present(sdl_host *host, bool pixels_changed)
     if (pixels_changed || !host->texture_valid) {
         if (!check_sdl(SDL_UpdateTexture(host->texture, NULL, host->framebuffer.pixels,
                                          (int)(host->framebuffer.stride_pixels *
-                                               sizeof(uint32_t))),
+                                               sizeof(wm_pixel))),
                        "upload framebuffer")) {
             return false;
         }
@@ -211,8 +218,8 @@ bool sdl_host_save_screenshot(sdl_host *host, const char *path)
     }
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
         host->framebuffer.pixels, host->framebuffer.width, host->framebuffer.height,
-        32, (int)(host->framebuffer.stride_pixels * sizeof(uint32_t)),
-        SDL_PIXELFORMAT_ARGB8888);
+        WM_PIXEL_BITS, (int)(host->framebuffer.stride_pixels * sizeof(wm_pixel)),
+        SDL_FRAMEBUFFER_FORMAT);
     if (surface == NULL) {
         fprintf(stderr, "Create screenshot surface: %s\n", SDL_GetError());
         return false;

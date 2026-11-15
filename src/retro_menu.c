@@ -305,7 +305,7 @@ wm_status rm_render(rm_context *context, wm_framebuffer *framebuffer,
         framebuffer->pixels == NULL || framebuffer->width != context->width ||
         framebuffer->height != context->height ||
         framebuffer->stride_pixels < (size_t)context->width ||
-        framebuffer->stride_pixels > SIZE_MAX / sizeof(uint32_t) / (size_t)context->height) {
+        framebuffer->stride_pixels > SIZE_MAX / sizeof(wm_pixel) / (size_t)context->height) {
         return WM_ERROR_ARGUMENT;
     }
     wm_canvas canvas = {

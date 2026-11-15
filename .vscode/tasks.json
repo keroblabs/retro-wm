@@ -1,0 +1,13 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "setup-wayland-env",
+            "type": "shell",
+            "command": "echo \"WAYLAND_DISPLAY=$(find /run/user/1000 -name 'wayland-*' -printf '%f\\n' | sort | tail -n 1)\" > ${workspaceFolder}/.wayland.env && echo \"SDL_VIDEODRIVER=wayland\" >> ${workspaceFolder}/.wayland.env && echo \"LD_PRELOAD=/lib64/libSDL2-2.0.so.0\" >> ${workspaceFolder}/.wayland.env",
+            "presentation": {
+                "reveal": "silent"
+            }
+        }
+    ]
+}
