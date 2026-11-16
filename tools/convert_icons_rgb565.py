@@ -62,7 +62,8 @@ def flood_exterior(image: Image.Image, background: tuple[int, int, int],
     through a one-pixel barrier. Interior white regions are not erased.
     """
     width, height = image.size
-    pixels = image.convert("RGB").load()
+    rgb_image = image.convert("RGB")
+    pixels = rgb_image.load()
     visited = bytearray(width * height)
     exterior = bytearray(width * height)
     queue = deque()
