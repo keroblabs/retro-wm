@@ -38,6 +38,7 @@ The demonstration assumes a 960×640 logical desktop. A smaller target such as 6
 
 **Notes**
 - **2026-11-16 — Discovery:** Registered from the Retro WM architectural review and follow-up task planning. Initial evidence is a source inspection; implementation and target hardware validation have not been carried out.
+- **2026-11-16 — Decision:** Logical display resolution is selected at compile time; live resolution switching is excluded from this task. The previous informal roadmap label `RWM-03` is superseded by the permanent ticket `RWM-CFG-0001`.
 
 
 **Proposed Change**  
