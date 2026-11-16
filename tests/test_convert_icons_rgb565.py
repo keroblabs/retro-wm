@@ -278,7 +278,7 @@ class IconConversionTests(unittest.TestCase):
             self.assertEqual((removed, restored), (0, 1))
             with self.assertRaisesRegex(ValueError, 'restoration RGB565'):
                 module.apply_pixel_cleanup(
-                    baseline, b'\\x00', (2, 1), 'big', 0xf81f,
+                    baseline, b'\x00', (2, 1), 'big', 0xf81f,
                     mask, metadata)
 
 
