@@ -108,6 +108,9 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 - **2026-11-16 — Implementation:** Added tools/convert_icons_rgb565.py, icons/images/crop-proposals.json, icons/images/README.md, tests/test_convert_icons_rgb565.py and ignored generated output. The converter produces headerless binary files, quantized previews, a manifest, and a crop contact sheet.
 - **2026-11-16 — Test:** Four synthetic Pillow-based unit tests passed locally: RGB565 packing/endianness, crop bounds/layout, invalid crop validation and RGBA-matte batch output. Actual source PNGs were inspected and content bounds measured separately; running the Python converter against all seven repo PNGs and manual review of generated previews remain outstanding.
 - **2026-11-16 — Status Change:** OPEN → IN_PROGRESS. This initial conversion utility is not accepted as the complete icon asset pipeline. Review and further asset/licence decisions are pending.
+- **2026-11-16 — Decision:** Trial four-neighbour flood-fill from the source image border, selecting only near-white connected background pixels. Reserve RGB565 word `0xF81F` as a proposed transparency key rather than treating white (`0xFFFF`) as transparent. Retain enclosed white details; fail conversion if an opaque source colour quantizes to the reserved key.
+- **2026-11-16 — Implementation:** Extended the converter with configurable exterior flood tolerance, binary alpha cutoff, 16-bit colour key, legacy opaque mode, transparent PNG previews and checkerboard contact sheet. The raw RGB565 still has no alpha; runtime skip-key support remains a separate `RWM-ICO-0001/0002` design decision.
+- **2026-11-16 — Test:** Added synthetic unit cases for enclosed-white preservation, near-white flood thresholds, RGB565 endianness/key preservation, and opaque-key collisions. Execution against the updated script and visual review of all seven PNG outputs remain **not yet verified**; no code-review approval is claimed.
 
 
 **Proposed Change**  
@@ -122,6 +125,11 @@ Extend the current extraction tools or add a separate converter for final icon r
 | `icon-devel` | [`a570789`](https://github.com/keroblabs/retro-wm/commit/a57078939185e55167685e84abebc48716b611a4) | `UNREVIEWED` | Record editable proposed crop rectangles |
 | `icon-devel` | [`ca67790`](https://github.com/keroblabs/retro-wm/commit/ca67790db49405d86016c38dfbee96ad4fccd763) | `UNREVIEWED` | Document analysis, processing and review workflow |
 | `icon-devel` | [`8df32fd`](https://github.com/keroblabs/retro-wm/commit/8df32fd96699a80ebccf45200574707b8a7fd20a) | `UNREVIEWED` | Ignore generated RGB565 assets |
+| `icon-devel` | [`e75dd11`](https://github.com/keroblabs/retro-wm/commit/e75dd117ab09fd91dd67f6ac266fb3b8ece7fffe) | `UNREVIEWED` | Add flood-based RGB565 colour-key transparency |
+| `icon-devel` | [`baf9e48`](https://github.com/keroblabs/retro-wm/commit/baf9e489ae7589a27af11db3921af1c09cc2684d) | `UNREVIEWED` | Extend tests for flood boundary, white interiors and key collisions |
+| `icon-devel` | [`edc2f6b`](https://github.com/keroblabs/retro-wm/commit/edc2f6b8527d5a4220e6b74db3d90c115bfe9d15) | `UNREVIEWED` | Simplify opaque packing compatibility test |
+| `icon-devel` | [`94128ce`](https://github.com/keroblabs/retro-wm/commit/94128ced6c0b801f72eb1cfc416493f1c735e2c4) | `UNREVIEWED` | Document colour-key format, flood controls and limitations |
+| `icon-devel` | [`c057ed5`](https://github.com/keroblabs/retro-wm/commit/c057ed56609eb98d6b2a60a69c47573689022806) | `UNREVIEWED` | Retain RGB source lifetime during flood pixel access |
 
 **Resolution Description**  
 Pending.
