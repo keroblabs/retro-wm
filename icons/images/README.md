@@ -78,14 +78,69 @@ Commands from the repository root:
     python3 tools/convert_icons_rgb565.py \
         --crop-config icons/images/crop-proposals.json --opaque
 
+## Generated C icon resources
+
+The same conversion also creates a **C source/header pair for every icon**
+under `icons/converted/c/`, in addition to the existing raw RGB565 files.
+The generated files are reproducible and ignored by Git, just like the raw
+files. For example:
+
+    icons/converted/c/icon_drive.h
+    icons/converted/c/icon_drive.c
+
+The header declares `extern const icon_t icon_drive;`. The C file stores
+a `static const uint16_t icon_drive_pixels[4096]` array containing the
+**final edited** RGB565 words, plus the public `icon_t` descriptor.
+
+The shared resource definition is `include/retro_icon.h`:
+
+    typedef enum {
+        WM_ICON_PIXEL_1BPP = 1,
+        WM_ICON_PIXEL_RGB565 = 2,
+        WM_ICON_PIXEL_RGB888 = 3
+    } wm_icon_pixel_type;
+
+    typedef struct icon_t_ {
+        uint16_t width, height;
+        uint8_t pixel_type;
+        uint32_t colour_key;
+        const void *icon_pixels;
+    } icon_t;
+
+There is no existing runtime icon pixel-format enum: `WM_PIXEL_FORMAT_RGB565`
+and `WM_PIXEL_FORMAT_RGB888` are **framebuffer compilation constants**
+(`565`, `888`), which cannot fit into the 8-bit descriptor field.
+The dedicated enum above intentionally uses values `1`, `2`, `3`.
+
+C RGB565 pixels are stored as native `uint16_t` **values**, independent of
+`--endian`; the endian option affects only the separate headerless binary
+file. The generated descriptor uses `WM_ICON_PIXEL_RGB565` and the configured
+32-bit `colour_key` (normally `0x0000F81F`). With `--opaque`, it uses
+`WM_ICON_COLOUR_KEY_NONE` (`UINT32_MAX`) to disable keying.
+
+`WM_ICON_PIXEL_1BPP` and `WM_ICON_PIXEL_RGB888` are reserved for the
+future renderer and converters: 1bpp stores packed MSB-first rows and treats
+bit zero as transparent; RGB888 uses native `uint32_t` words of the form
+`0x00RRGGBB`. **This converter currently emits RGB565 only.**
+
+To compile an icon later, add its generated `.c` file to the application
+and include the corresponding `.h`, using `include/` on the C include
+path. The resource descriptor is now available, but window-manager icon
+painting remains tracked under `RWM-ICO-0001/0002`.
+
+Use `--no-c` to suppress generated C files if only the raw binary and
+previews are needed. Always apply manual `--cleanup` first when you want the
+C arrays to contain your edited pixel masks.
+
 The converter writes to the ignored `icons/converted/` folder:
 
+- `c/*.h` and `c/*.c`: C resource descriptors and one RGB565 array per icon.
 - `raw/*.rgb565`: 64×64, headerless, row-major 16-bit RGB565, little-endian
   by default; **8192 bytes per icon**, including transparent key pixels.
 - `preview/*.png`: **RGBA** PNG previews of the quantized RGB565 pixels.
   Pixels equal to the key are rendered with alpha=0 for inspection.
 - `manifest.json`: input, crop, placement, transparent pixel count,
-  colour-key encoding and flood threshold.
+  colour-key encoding, flood threshold and generated C filenames.
 - `crop-contact-sheet.png`: original source/crop rectangles next to output
   previews on a **checkerboard**, making holes and transparency visible.
 
