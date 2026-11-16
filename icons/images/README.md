@@ -26,52 +26,89 @@ shadows. Its boxes use [left, top, right, bottom] with *exclusive* right/bottom
 coordinates.
 
 The original placements vary markedly (e.g. the narrow USB drive and wide
-folder). For a consistent resource size we propose a **64×64 opaque canvas**
+folder). For a consistent resource size we propose a **64×64 canvas**
 with **3 pixels of destination padding**. Each crop is scaled uniformly to
 fit the 58×58 available area and is centred, without stretching its aspect
 ratio. This standardizes dimensions, not physical shape. Crops and scaling
 are **working proposals**, subject to reviewing the generated contact sheet.
 
-## Convert to headerless RGB565
+## Convert to headerless, colour-keyed RGB565
 
-Requires Python 3 and Pillow, also used by the existing icon tools.
+The converter now uses **four-connected flood fill** from the outer edges of each
+source PNG. Only pixels close to the configured source background colour are
+eligible, with a default per-channel tolerance of 24. Pixels enclosed by an
+unbroken contour, including genuinely white interior details, are preserved.
+The mask is calculated **before cropping or resizing**, then resized with the
+colours; this reduces white-fringe artifacts on antialiased edges.
 
-Commands (run from repository root):
+A pixel with RGB565 value **0xF81F** (magenta, little-endian bytes `1f f8`)
+represents transparency. It is not white, so an opaque white pixel remains
+**0xFFFF**. This is a proposed icon-specific convention: the future RWM icon
+renderer must skip pixels whose *16-bit value* equals the colour key. An opaque
+pixel that would quantize to the reserved key causes an error rather than
+silently disappearing. Choose a different key for such assets.
 
-    python3 -m pip install Pillow
+There is no per-pixel alpha in the raw RGB565 data. Resampled alpha values below
+`--alpha-cutoff` (128 by default) become transparent; others become fully
+opaque. Soft shadows and antialiased contours therefore have **binary**
+transparency at runtime, with no fractional blending.
 
-    # Inspect source content boxes only; do not write files:
+Requires Python 3 and Pillow (already installed on the development machine).
+
+Commands from the repository root:
+
+    # Inspect detected crop bounds without writing files:
     python3 tools/convert_icons_rgb565.py --analyse-only
 
-    # Convert using editable proposed crop rectangles:
-    python3 tools/convert_icons_rgb565.py --crop-config icons/images/crop-proposals.json
+    # Convert with current crop proposals and automatic exterior transparency:
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json
 
-    # Or omit --crop-config to detect and pad bounds automatically:
-    python3 tools/convert_icons_rgb565.py
+    # Make exterior segmentation more aggressive (review the result carefully):
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json \
+        --flood-tolerance 32
 
-The converter writes to the ignored icons/converted/ folder:
+    # Select a different reserved RGB565 key, if needed:
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json \
+        --colour-key 0xF81F
 
-- raw/*.rgb565: 64×64, headerless, row-major 16-bit RGB565 pixels,
-  **little-endian** by default (8192 bytes per icon).
-- preview/*.png: visualizations of the **quantized RGB565 output**, not
-  simply unquantized source previews.
-- manifest.json: input, crop, output placement and storage metadata.
-- crop-contact-sheet.png: original source with red crop rectangles beside
-  its processed preview. Review this image before accepting crop proposals.
+    # Restore previous opaque conversion (no key/flood):
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json --opaque
 
-Adjust each rectangle in crop-proposals.json to improve individual crops.
-The tool also supports --size, --threshold, --source-padding,
---canvas-padding, --background R,G,B, --endian big, and a separate
---output-dir. Run --help for options. It does not alter source PNGs.
+The converter writes to the ignored `icons/converted/` folder:
 
-## Limits and follow-up
+- `raw/*.rgb565`: 64×64, headerless, row-major 16-bit RGB565, little-endian
+  by default; **8192 bytes per icon**, including transparent key pixels.
+- `preview/*.png`: **RGBA** PNG previews of the quantized RGB565 pixels.
+  Pixels equal to the key are rendered with alpha=0 for inspection.
+- `manifest.json`: input, crop, placement, transparent pixel count,
+  colour-key encoding and flood threshold.
+- `crop-contact-sheet.png`: original source/crop rectangles next to output
+  previews on a **checkerboard**, making holes and transparency visible.
 
-**No transparency is encoded.** The RGB sources already contain opaque white
-backgrounds; RGB565 itself has no alpha bit. The converter composites any
-future RGBA PNG onto the selected solid background. Background removal,
-masking, and the runtime resource contract belong to RWM-ICO-0001/0002 and
-must be agreed separately. Do not mistake automatic foreground detection for
-a reliable alpha mask, especially for white details inside icons.
+Use `xdg-open icons/converted/crop-contact-sheet.png` to inspect the results.
+
+The adjustable crop rectangles are in `crop-proposals.json`.
+The tool also supports `--size`, `--threshold` (crop detection),
+`--source-padding`, `--canvas-padding`, `--background R,G,B`,
+`--endian big`, `--alpha-cutoff` and `--output-dir`.
+Run `--help` for the complete set. Source PNGs are never modified.
+
+## Important contour limitations
+
+- Flood fill only removes near-background pixels **connected to a source
+  image edge**. A white interior region connected to the outside through a
+  gap may also be removed; use a smaller tolerance or repair the source mask.
+- A white enclosed area is kept even when it is pure white.
+- The threshold cannot perfectly distinguish pale highlights, shadows and
+  JPEG-derived white noise. A binary RGB565 key also cannot reproduce
+  fractional opacity. Review the checkerboard contact sheet before adoption.
+- A transparent key in RGB565 is an **asset encoding convention**, not
+  automatic transparency in the framebuffer or SDL texture. The renderer
+  implementation remains tracked by `RWM-ICO-0001` / `RWM-ICO-0002`.
 
 The current source artwork may have licensing restrictions; check provenance
 and redistributability before publishing derivative assets. No converted
