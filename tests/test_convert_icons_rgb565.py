@@ -290,7 +290,7 @@ class IconConversionTests(unittest.TestCase):
             header, source = module.generate_c_icon(
                 'icon-test', raw, (2, 1), endian, 0xf81f)
             self.assertIn('extern const icon_t icon_test;', header)
-            self.assertIn('#include "icon-test.h"', source)
+            self.assertIn('#include "icon_test.h"', source)
             self.assertIn('0xF800u, 0x07E0u', source)
             self.assertIn('.width = 2u', source)
             self.assertIn('.height = 1u', source)
