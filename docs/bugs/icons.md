@@ -14,40 +14,53 @@ Follow the status rules in the methodology.
 
 | ID | Status | Title |
 | --- | --- | --- |
-| `RWM-ICO-0001` | `OPEN` | Define portable icon resource descriptors and identifiers |
+| `RWM-ICO-0001` | `IN_PROGRESS` | Define portable icon resource descriptors and identifiers |
 | `RWM-ICO-0002` | `OPEN` | Implement clipped icon rendering on the software canvas |
 | `RWM-ICO-0003` | `IN_PROGRESS` | Establish a reproducible icon import and build-time conversion workflow |
 | `RWM-ICO-0004` | `OPEN` | Integrate optional icons into selected UI components and demo |
+| `RWM-ICO-0005` | `OPEN` | Demonstrate three desktop icons with selection and click activation |
 
 ## Issues
 
 ### RWM-ICO-0001
 
 **ID:** `RWM-ICO-0001`  
-**Status:** `OPEN`  
+**Status:** `IN_PROGRESS`  
 **Title:** Define portable icon resource descriptors and identifiers
 
 **Description**  
 The repository has exploratory icon extraction tools, but no public icon descriptor or semantic naming convention suitable for embedded reuse.
 
 **Details**  
-**Confirmed:** `icons/README.md` and `icons/newaita/README.md` document evaluation artwork and manifests, not a toolkit icon API. Source artwork selection, licensing and the required final icon collection are not yet agreed.
+**Baseline evidence:** `icons/README.md` and `icons/newaita/README.md` document evaluation artwork; there was no toolkit icon API before this working branch. The shared header `include/retro_icon.h` is now a **preliminary implementation**, but validation, renderer integration and portability review are outstanding.
 
-**Acceptance criteria for review:** Define an icon's dimensions, pixel/mask representation, ownership/lifetime, stable identifier or reference mechanism, and rules for optional assets. Support a resource representation usable without SDL or runtime image decoders. No external artwork is required to finalize the interface.
+**Required resource contract (working proposal):**
+- `icon_t` stores `uint16_t width, height`, `uint8_t pixel_type`, `uint32_t colour_key` and `const void *icon_pixels`. The pointer is `void*` rather than `char*` so generated typed C arrays can be referenced without reinterpretation; data is immutable.
+- `wm_icon_pixel_type`: `WM_ICON_PIXEL_1BPP = 1`, `WM_ICON_PIXEL_RGB565 = 2`, `WM_ICON_PIXEL_RGB888 = 3`. This is deliberately separate from the **compile-time framebuffer macros** `WM_PIXEL_FORMAT_RGB565 = 565` and `WM_PIXEL_FORMAT_RGB888 = 888`, whose numeric values exceed `uint8_t`.
+- 1bpp is row-packed MSB-first, byte-aligned per scanline; a **zero bit is transparent**, a one bit requires the caller's chosen foreground colour. `colour_key` is irrelevant for 1bpp.
+- RGB565 stores native `uint16_t` pixels; a 16-bit value equal to `colour_key` (currently `0xF81F`) means transparent, preserving opaque white (`0xFFFF`). RGB888 stores native `uint32_t` pixels as `0x00RRGGBB`; `colour_key` is compared over its valid 24-bit colour. `WM_ICON_COLOUR_KEY_NONE = UINT32_MAX` disables keying for opaque colour icons.
+- `tools/convert_icons_rgb565.py` emits `icons/converted/c/<icon>.h/.c` containing one `uint16_t` array and one `icon_t` object **after** any manual pixel-mask cleanup. Example: `icon_drive_pixels[]` and `icon_drive`. C array literals are host-endian word **values**, whereas raw .rgb565 byte order is separately configurable. The generator currently emits **RGB565 only**; 1bpp/RGB888 are supported by the descriptor contract, not yet generated.
+- The icon source format is independent from the renderer's compile-time framebuffer format; conversions and clipping are handled by `RWM-ICO-0002`. The renderer must not assume icon data always matches `wm_pixel` or reference SDL.
 
-**Related:** `RWM-ICO-0002`, `RWM-ICO-0003`, `RWM-ICO-0004`.
+**Acceptance criteria for review:** Verify C11 and embedded compatibility, exact memory layout, 1bpp row pitch and foreground contract, RGB565/RGB888 conversion, unaligned/invalid inputs and sentinel/colour-key handling; compile generated assets under RGB565 and RGB888 builds; retain constant/static resource ownership; document whether semantic IDs or application-owned icon pointers are preferred. The descriptor and generator are not proof of runtime support.
+
+**Related:** `RWM-ICO-0002` renderer, `RWM-ICO-0003` resource generation, `RWM-ICO-0004` general UI support, and `RWM-ICO-0005` demo.
 
 **Notes**
 - **2026-11-16 — Discovery:** Registered from the Retro WM architectural review and follow-up task planning. Initial evidence is a source inspection; implementation and target hardware validation have not been carried out.
+- **2026-11-16 — Review:** Retro WM has `WM_PIXEL_FORMAT_RGB565 = 565` and `WM_PIXEL_FORMAT_RGB888 = 888` for compile-time framebuffer selection, not a resource-format enum. Since the proposed `pixel_type` is a byte, dedicated icon values 1/2/3 were selected. Use `const void *` for typed static data, not `const char *`.
+- **2026-11-16 — Implementation:** Introduced initial `include/retro_icon.h` with the proposed enum, `icon_t` descriptor and no-key sentinel. The generated source uses this contract, but drawing and validation APIs are not implemented.
+- **2026-11-16 — Status Change:** OPEN → IN_PROGRESS due to the preliminary resource header. Renderer integration, review and acceptance remain pending.
 
 
 **Proposed Change**  
-Compare small C-array, indexed palette and mask/alpha formats with embedded memory costs and RGB565/RGB888 behaviour. Decide a minimal, documented descriptor independent of particular icon artwork.
+Use `include/retro_icon.h` and the C resources generated by `RWM-ICO-0003` as the basis for the eventual icon API. Review the enum and descriptor details above, add explicit validation/format documentation, and coordinate pixel conversion and transparency behaviour with `RWM-ICO-0002`. Do not make the renderer depend on PNG/Pillow or on a single icon colour depth.
 
 **Commits**
 
 | Branch | Commit (short hash) | Review Status | Description |
 | --- | --- | --- | --- |
+| `icon-devel` | [`849724f`](https://github.com/keroblabs/retro-wm/commit/849724faf8296eee6b62a5bce4ce702c7931521d) | `UNREVIEWED` | Add preliminary `icon_t` resource type and icon pixel-format enum |
 
 **Resolution Description**  
 Pending.
@@ -117,6 +130,9 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 - **2026-11-16 — Decision:** Following user review, reverse the prior removal-only restriction: manual pixel-map edits now support both `#` → `.` and `.` → `#`. To restore a mistakenly transparent pixel, reconstruct its original quantized RGB565 colour from the same input PNG/crop/scale rather than inferring it from the colour key. Retain existing baseline-hash verification and non-destructive map handling.
 - **2026-11-16 — Implementation:** `--cleanup` now separately renders an opaque RGB565 colour reference for restoration. It writes the key for removed pixels and the source-derived RGB565 colour for restored pixels, without changing unedited words. A restored pixel colliding with the reserved key is rejected. The manifest distinguishes `cleanup_removed_pixels` and `cleanup_restored_pixels`.
 - **2026-11-16 — Test:** Added regression coverage for both simultaneous edit directions, non-white source-colour restoration, big-endian RGB565, reserved-key collisions, and invalid reference size. Automated tests remain unexecuted in this session; code review and seven-icon visual acceptance remain pending.
+- **2026-11-16 — Decision:** Produce a native C array plus a descriptor for **each** converted icon, using the shared `icon_t` definition in `include/retro_icon.h`. Generate from the final RGB565 pixels after manual `--cleanup`; preserve the existing raw .rgb565 exports. The C arrays contain typed `uint16_t` words, independent of raw byte endianness.
+- **2026-11-16 — Implementation:** `tools/convert_icons_rgb565.py` now writes reproducible `icons/converted/c/<name>.c/.h` with one static `uint16_t` pixel array and a public `const icon_t` object for each image. `--no-c` can suppress C generation. The manifest names the source/header and C symbol; symbol collisions and invalid dimensions are checked.
+- **2026-11-16 — Test:** Added checks for generated descriptors, RGB565 word values with both raw byte orders, opaque no-key mode, invalid inputs, and optional native-C compilation. Test suite requires execution on the checkout and code review before acceptance.
 
 
 **Proposed Change**  
@@ -142,6 +158,10 @@ Extend the current extraction tools or add a separate converter for final icon r
 | `icon-devel` | [`9d96da0`](https://github.com/keroblabs/retro-wm/commit/9d96da02194daa6eadda2a7dbdd5a62c4208612e) | `UNREVIEWED` | Restore `.` → `#` pixels from original PNG colour data |
 | `icon-devel` | [`c65c601`](https://github.com/keroblabs/retro-wm/commit/c65c601061eb39db3fb674bda832ac9c621ed26d) | `UNREVIEWED` | Test bidirectional edits, restoration and collision checks |
 | `icon-devel` | [`1062b3c`](https://github.com/keroblabs/retro-wm/commit/1062b3c86e1decabc8e60fb3399a8be03b1e9ede) | `UNREVIEWED` | Document restoring previously transparent pixels |
+| `icon-devel` | [`33906ce`](https://github.com/keroblabs/retro-wm/commit/33906cef9b0e7a98bb5847dd2486710f549f5f4f) | `UNREVIEWED` | Generate C source/header pairs and `icon_t` descriptors |
+| `icon-devel` | [`d30c23d`](https://github.com/keroblabs/retro-wm/commit/d30c23dcbee60491140164f31f6b2b725ecf4c98) | `UNREVIEWED` | Test C array word values, byte-order independence and fields |
+| `icon-devel` | [`d94484d`](https://github.com/keroblabs/retro-wm/commit/d94484df69cd5c5a4b712fd33f6378934ff90de9) | `UNREVIEWED` | Add optional native compile smoke test for generated C |
+| `icon-devel` | [`0b5e098`](https://github.com/keroblabs/retro-wm/commit/0b5e0980e6955053a1a1fe2e5879bd797ecddb6a) | `UNREVIEWED` | Document generated C assets and icon-format contract |
 
 **Resolution Description**  
 Pending.
@@ -165,10 +185,71 @@ Icons are not yet displayed by the reusable window/menu UI or demonstration. Pla
 
 **Notes**
 - **2026-11-16 — Discovery:** Registered from the Retro WM architectural review and follow-up task planning. Initial evidence is a source inspection; implementation and target hardware validation have not been carried out.
+- **2026-11-16 — Scope Clarification:** `RWM-ICO-0005` owns the concrete three-icon desktop demo, its captions and two-click selection/activation. Keep this ticket for general optional icon integration into reusable UI components, not duplicate the demo acceptance criteria.
 
 
 **Proposed Change**  
 Add optional icon references to chosen UI descriptors, with metrics/layout review where needed. Prioritize a minimal demonstration before expanding the widget set.
+
+**Commits**
+
+| Branch | Commit (short hash) | Review Status | Description |
+| --- | --- | --- | --- |
+
+**Resolution Description**  
+Pending.
+
+
+### RWM-ICO-0005
+
+**ID:** `RWM-ICO-0005`  
+**Status:** `OPEN`  
+**Title:** Demonstrate three desktop icons with selection and click activation
+
+**Description**  
+The SDL demonstration should show three right-aligned desktop icons, label them, support selection by one click on the icon image, and activate the selected icon on a second completed click by opening a window confirming the event. The layout must be configurable without hardcoding screen resolution.
+
+**Details**  
+**Assets:** Use the generated C resources and `icon_t` descriptors from `RWM-ICO-0001` / `RWM-ICO-0003` for `icon_trash`, `icon_drive`, and `icon_floppy_disk`. Suggested displayed captions: **Trash**, **Drive**, **Floppy Disk**. Do not load PNG files at runtime. Icon dimensions are currently 64×64.
+
+**Required desktop arrangement:** One column at the right, ordered **bottom-to-top Trash, Drive, Floppy Disk**. Use named, build-time/demo configuration values rather than scattered literals:
+
+- `ICON_SIZE = 64`, `RIGHT_MARGIN = 64`, `BOTTOM_MARGIN = 64`.
+- `VERTICAL_IMAGE_GAP = 48`, giving top-to-top **pitch = 64 + 48 = 112**.
+- `CAPTION_GAP = 14`; font **C8x14** gives `CAPTION_HEIGHT = 14`. Icon + gap + caption occupies **64 + 14 + 14 = 92** pixels. This leaves 20 pixels between caption bottom and the next icon above/below at a 112-pixel pitch.
+- **Coordinate correction:** The originally proposed `X = screen_width - 64`, `Y_trash = screen_height - 64` would put the rightmost/bottommost image edge at the framebuffer boundary and the lower caption offscreen. To achieve the stated **64-pixel right and bottom margins around the full content**, use:
+
+```text
+x = screen_width - RIGHT_MARGIN - ICON_SIZE
+trash_y = screen_height - BOTTOM_MARGIN
+          - (ICON_SIZE + CAPTION_GAP + CAPTION_HEIGHT)
+drive_y = trash_y - (ICON_SIZE + VERTICAL_IMAGE_GAP)
+floppy_y = drive_y - (ICON_SIZE + VERTICAL_IMAGE_GAP)
+caption_y = icon_y + ICON_SIZE + CAPTION_GAP
+```
+
+- At 960×640 the image origins are **Trash (832,484)**, **Drive (832,372)**, **Floppy Disk (832,260)**. At 640×480 they are **Trash (512,324)**, **Drive (512,212)**, **Floppy Disk (512,100)**. Logical size selection remains **compile-time** (`RWM-CFG-0001`); there is no runtime-resolution switch requirement.
+- Caption text should be **centred beneath each icon**, not forcibly clipped to a 64-pixel column: “Floppy Disk” is 11 × 8 = **88 pixels** in C8x14. Ensure captions and their selection rectangles remain inside the desktop and do not overlap the next icon.
+
+**Rendering order:** The icons/captions belong to the **desktop layer**, above its background but **below windows and menus**, and must never be painted over an overlapping window. The current demonstration creates initial overlapping windows, so initial placement or window geometry may need adjustment to keep all three icons visible. Selection changes must invalidate and repaint the relevant desktop area without corrupting window content.
+
+**Click/selection behaviour:**
+- Hit testing considers **only the 64×64 icon image rectangles**. Captions are not clickable.
+- A completed primary-button click (press and release on the same exposed icon, without an intervening drag/cancellation) selects it. Show selection by **inverting the caption foreground/background**; preserve C8x14 legibility in colour and monochrome themes.
+- A second completed click on that same selected icon invokes its demo `on_click` action. For now, opening a normal Retro WM window titled or labelled for the corresponding icon is sufficient evidence that dispatch worked.
+- Clicking a different icon selects that icon instead; clicking empty desktop space clears selection. Window/menu interactions take priority over obscured desktop icons. Do not use a double-click timing threshold; two successive single clicks are intentional.
+- Keep selection and activation state deterministic, including pointer capture, dragging, window overlap, and cancellation. Define repaint/invalidation for selection transitions and opened windows.
+
+**Acceptance criteria for review:** Demo builds with generated icon assets and normal C11 compilation; exactly three icons render in the intended order at both 960×640 and 640×480 (when build-configured), with 64-pixel right/bottom margins and 112-pixel image pitch. Text is centred at 14-pixel gap and selected text is inverted. Tests cover hit rectangles, first/second click, changing selection, clearing selection, actions, occlusion and repaint. Existing window/menu interactions and SDL-free core builds must remain functional.
+
+**Dependencies:** `RWM-ICO-0001` descriptor, `RWM-ICO-0002` canvas icon renderer, `RWM-ICO-0003` C asset generation. This is the **concrete desktop example**, separate from `RWM-ICO-0004` general reusable UI icon support.
+
+**Notes**
+- **2026-11-16 — Discovery:** Registered from the proposed three-icon desktop layout and selection/activation interaction. Coordinates were checked against caption height and stated right/bottom margins. This is a planning ticket; implementation has not started.
+- **2026-11-16 — Review:** The user's explicit original top-left coordinates would clip the bottom caption and give no 64-pixel image right margin. The proposed corrected layout anchors the **complete icon-plus-caption group** to a 64-pixel bottom margin while preserving the requested 112-pixel image pitch. Keep these margins configurable for later tuning.
+
+**Proposed Change**  
+Provide a portable desktop icon layer or paint callback integrated into the existing window rendering order. Implement an application-owned list of three icons, per-icon 64×64 image hit regions, caption inversion selection state, and two-successive-click activation. Use named spacing configuration, C8x14 font metrics, and a simple message window to demonstrate the on-click event. Do not introduce runtime image decoding or timed double-click handling.
 
 **Commits**
 
