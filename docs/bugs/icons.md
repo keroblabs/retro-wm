@@ -133,6 +133,7 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 - **2026-11-16 — Decision:** Produce a native C array plus a descriptor for **each** converted icon, using the shared `icon_t` definition in `include/retro_icon.h`. Generate from the final RGB565 pixels after manual `--cleanup`; preserve the existing raw .rgb565 exports. The C arrays contain typed `uint16_t` words, independent of raw byte endianness.
 - **2026-11-16 — Implementation:** `tools/convert_icons_rgb565.py` now writes reproducible `icons/converted/c/<name>.c/.h` with one static `uint16_t` pixel array and a public `const icon_t` object for each image. `--no-c` can suppress C generation. The manifest names the source/header and C symbol; symbol collisions and invalid dimensions are checked.
 - **2026-11-16 — Test:** Added checks for generated descriptors, RGB565 word values with both raw byte orders, opaque no-key mode, invalid inputs, and optional native-C compilation. Test suite requires execution on the checkout and code review before acceptance.
+- **2026-11-16 — Code Review:** Corrected the earlier truncated-input test fixture (which represented the literal characters `\\x00` rather than one zero byte). Also normalized generated `.c/.h` filenames and `#include` targets to sanitized C symbols to avoid invalid filenames in generated C. Updated the generator test accordingly. These commits remain `UNREVIEWED` pending execution of the complete suite.
 
 
 **Proposed Change**  
@@ -162,6 +163,9 @@ Extend the current extraction tools or add a separate converter for final icon r
 | `icon-devel` | [`d30c23d`](https://github.com/keroblabs/retro-wm/commit/d30c23dcbee60491140164f31f6b2b725ecf4c98) | `UNREVIEWED` | Test C array word values, byte-order independence and fields |
 | `icon-devel` | [`d94484d`](https://github.com/keroblabs/retro-wm/commit/d94484df69cd5c5a4b712fd33f6378934ff90de9) | `UNREVIEWED` | Add optional native compile smoke test for generated C |
 | `icon-devel` | [`0b5e098`](https://github.com/keroblabs/retro-wm/commit/0b5e0980e6955053a1a1fe2e5879bd797ecddb6a) | `UNREVIEWED` | Document generated C assets and icon-format contract |
+| `icon-devel` | [`8b2b656`](https://github.com/keroblabs/retro-wm/commit/8b2b65650641a66625ad56d43cfb4f37d045b9db) | `UNREVIEWED` | Repair truncated RGB565 reference in a synthetic test |
+| `icon-devel` | [`8648274`](https://github.com/keroblabs/retro-wm/commit/864827409cbeb4dfbe66417b3794abe47fab7dfd) | `UNREVIEWED` | Normalize generated C filenames and include directives |
+| `icon-devel` | [`258a5d6`](https://github.com/keroblabs/retro-wm/commit/258a5d6cd223f1f52aa9d7a17f53423671357a7d) | `UNREVIEWED` | Test generated C normalized include names |
 
 **Resolution Description**  
 Pending.
