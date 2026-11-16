@@ -97,6 +97,56 @@ The tool also supports `--size`, `--threshold` (crop detection),
 `--endian big`, `--alpha-cutoff` and `--output-dir`.
 Run `--help` for the complete set. Source PNGs are never modified.
 
+## Editable pixel maps and manual cleanup
+
+Automatic flood fill is conservative, but isolated near-white source artifacts
+may survive. To remove individual unwanted pixels **without changing any other
+RGB565 values**, every normal colour-key conversion now exports an editable
+pixel map for each icon under `icons/masks/`:
+
+- `icon_drive.txt` etc.: plain-text **64 rows × 64 columns** by default.
+  `#` means the pixel is opaque; `.` means RGB565 transparency key `0xF81F`.
+  There are no headers, row numbers, or spaces.
+- `icon_drive.json` etc.: reference dimensions, byte order, key and SHA-256
+  of the baseline RGB565 data. These files prevent accidental use of a stale
+  mask after a crop, image, resize or threshold change.
+
+**First pass** (creates maps if missing, but never overwrites manual edits):
+
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json
+
+**Edit** `icons/masks/icon_drive.txt` (and the other maps) in any plain-text
+editor. Change **only unwanted opaque `#` pixels to `.`**, keeping the grid
+size intact. This is a *removal-only* operation; you cannot turn existing
+transparent dots back into opaque artwork.
+
+**Second pass**, apply your edited maps:
+
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json --cleanup
+
+This updates `icons/converted/raw/*.rgb565` and the RGBA previews/contact
+sheet. It **does not rewrite the text maps**. The manifest reports how many
+pixels were manually cleared per icon. Unchanged `#` pixels retain exactly
+their original RGB565 values; the script only writes the reserved key at
+selected `.` positions. There is no extra alpha buffer in the binary file.
+
+The editable `icons/masks/` directory is deliberately **not gitignored**:
+after approving a cleaned mask you may commit its text and JSON metadata to
+the `icon-devel` branch for reproducible conversion.
+
+If a source image, crop rectangle or conversion setting changes the baseline,
+`--cleanup` reports a hash mismatch instead of silently shifting your edits
+onto different pixels. Review any changes, back up your edited masks, and
+regenerate them **explicitly** with `--reset-maps` (this overwrites edits):
+
+    python3 tools/convert_icons_rgb565.py \
+        --crop-config icons/images/crop-proposals.json --reset-maps
+
+After regenerating, re-apply any desired manual cleanup. The raw and preview
+outputs remain ignored as reproducible build artifacts.
+
 ## Important contour limitations
 
 - Flood fill only removes near-background pixels **connected to a source
@@ -106,6 +156,9 @@ Run `--help` for the complete set. Source PNGs are never modified.
 - The threshold cannot perfectly distinguish pale highlights, shadows and
   JPEG-derived white noise. A binary RGB565 key also cannot reproduce
   fractional opacity. Review the checkerboard contact sheet before adoption.
+- Manual cleanup edits individual **output** pixels at the selected final
+  resolution. Re-export the maps before changing icon size, crop or scale;
+  otherwise coordinates will no longer refer to the same artwork.
 - A transparent key in RGB565 is an **asset encoding convention**, not
   automatic transparency in the framebuffer or SDL texture. The renderer
   implementation remains tracked by `RWM-ICO-0001` / `RWM-ICO-0002`.
