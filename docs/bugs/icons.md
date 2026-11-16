@@ -111,6 +111,9 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 - **2026-11-16 — Decision:** Trial four-neighbour flood-fill from the source image border, selecting only near-white connected background pixels. Reserve RGB565 word `0xF81F` as a proposed transparency key rather than treating white (`0xFFFF`) as transparent. Retain enclosed white details; fail conversion if an opaque source colour quantizes to the reserved key.
 - **2026-11-16 — Implementation:** Extended the converter with configurable exterior flood tolerance, binary alpha cutoff, 16-bit colour key, legacy opaque mode, transparent PNG previews and checkerboard contact sheet. The raw RGB565 still has no alpha; runtime skip-key support remains a separate `RWM-ICO-0001/0002` design decision.
 - **2026-11-16 — Test:** Added synthetic unit cases for enclosed-white preservation, near-white flood thresholds, RGB565 endianness/key preservation, and opaque-key collisions. Execution against the updated script and visual review of all seven PNG outputs remain **not yet verified**; no code-review approval is claimed.
+- **2026-11-16 — Decision:** Keep automatic flood tolerance conservative to protect pale icon details. Introduce an editable post-conversion pixel map, with `#` for opaque RGB565 pixels and `.` for colour-key transparency. A manual cleanup pass must only change `#` to `.`, preserving every other pixel word. This supersedes a proposed automatic disconnected-component removal as the immediate cleanup workflow.
+- **2026-11-16 — Implementation:** Default colour-key conversion now creates non-destructively named `icons/masks/*.txt` grids and companion SHA-256 metadata. `--cleanup` applies user edits only after checking dimensions, key, endianness, baseline hash and no transparent-to-opaque changes. `--reset-maps` is an explicit, destructive regeneration operation. Source PNGs and other RGB565 pixels are unchanged.
+- **2026-11-16 — Test:** Added regression tests for manual removal of a selected pixel, editable-map persistence, PNG preview transparency, corrupted/stale map rejection, and explicit regeneration. Tests have been committed but **not executed in this session**; target PNG review remains pending.
 
 
 **Proposed Change**  
@@ -130,6 +133,9 @@ Extend the current extraction tools or add a separate converter for final icon r
 | `icon-devel` | [`edc2f6b`](https://github.com/keroblabs/retro-wm/commit/edc2f6b8527d5a4220e6b74db3d90c115bfe9d15) | `UNREVIEWED` | Simplify opaque packing compatibility test |
 | `icon-devel` | [`94128ce`](https://github.com/keroblabs/retro-wm/commit/94128ced6c0b801f72eb1cfc416493f1c735e2c4) | `UNREVIEWED` | Document colour-key format, flood controls and limitations |
 | `icon-devel` | [`c057ed5`](https://github.com/keroblabs/retro-wm/commit/c057ed56609eb98d6b2a60a69c47573689022806) | `UNREVIEWED` | Retain RGB source lifetime during flood pixel access |
+| `icon-devel` | [`6d729bb`](https://github.com/keroblabs/retro-wm/commit/6d729bb9c607597bd01dccd9ce1a635e8e455af8) | `UNREVIEWED` | Export editable per-icon pixel maps and implement manual cleanup |
+| `icon-devel` | [`06fe5cd`](https://github.com/keroblabs/retro-wm/commit/06fe5cd064bf0b01bda171be9a3f4f7a40d61b8b) | `UNREVIEWED` | Add tests for cleanup persistence and stale-mask protection |
+| `icon-devel` | [`155bce9`](https://github.com/keroblabs/retro-wm/commit/155bce9e71414889a47a94546e24ec0b5647fcc8) | `UNREVIEWED` | Document editable pixel map and manual cleanup steps |
 
 **Resolution Description**  
 Pending.
