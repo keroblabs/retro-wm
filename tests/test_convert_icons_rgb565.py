@@ -2,7 +2,9 @@
 
 import importlib.util
 import json
+import shutil
 import struct
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -305,6 +307,27 @@ class IconConversionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'fit into uint16_t'):
             module.generate_c_icon('large', b'', (65536, 1), 'little', 0xf81f)
 
+
+
+    def test_generated_icon_c_compiles_with_portable_resource_header(self):
+        compiler = shutil.which('cc')
+        if compiler is None:
+            self.skipTest('C compiler unavailable')
+        source_image = Image.new('RGB', (2, 2), (255, 255, 255))
+        raw = module.encode_rgb565(source_image, 'little')
+        header, source_code = module.generate_c_icon(
+            'icon_test', raw, (2, 2), 'little', 0xf81f)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'icon_test.h').write_text(header, encoding='ascii')
+            (root / 'icon_test.c').write_text(source_code, encoding='ascii')
+            include_dir = Path(__file__).resolve().parents[1] / 'include'
+            subprocess.run(
+                [compiler, '-std=c11', '-Wall', '-Wextra', '-Wpedantic',
+                 '-Werror', '-I', str(include_dir), '-I', str(root),
+                 '-c', str(root / 'icon_test.c'), '-o', str(root / 'icon_test.o')],
+                check=True, capture_output=True, text=True)
+            self.assertTrue((root / 'icon_test.o').is_file())
 
 
 if __name__ == '__main__':
