@@ -114,6 +114,9 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 - **2026-11-16 — Decision:** Keep automatic flood tolerance conservative to protect pale icon details. Introduce an editable post-conversion pixel map, with `#` for opaque RGB565 pixels and `.` for colour-key transparency. A manual cleanup pass must only change `#` to `.`, preserving every other pixel word. This supersedes a proposed automatic disconnected-component removal as the immediate cleanup workflow.
 - **2026-11-16 — Implementation:** Default colour-key conversion now creates non-destructively named `icons/masks/*.txt` grids and companion SHA-256 metadata. `--cleanup` applies user edits only after checking dimensions, key, endianness, baseline hash and no transparent-to-opaque changes. `--reset-maps` is an explicit, destructive regeneration operation. Source PNGs and other RGB565 pixels are unchanged.
 - **2026-11-16 — Test:** Added regression tests for manual removal of a selected pixel, editable-map persistence, PNG preview transparency, corrupted/stale map rejection, and explicit regeneration. Tests have been committed but **not executed in this session**; target PNG review remains pending.
+- **2026-11-16 — Decision:** Following user review, reverse the prior removal-only restriction: manual pixel-map edits now support both `#` → `.` and `.` → `#`. To restore a mistakenly transparent pixel, reconstruct its original quantized RGB565 colour from the same input PNG/crop/scale rather than inferring it from the colour key. Retain existing baseline-hash verification and non-destructive map handling.
+- **2026-11-16 — Implementation:** `--cleanup` now separately renders an opaque RGB565 colour reference for restoration. It writes the key for removed pixels and the source-derived RGB565 colour for restored pixels, without changing unedited words. A restored pixel colliding with the reserved key is rejected. The manifest distinguishes `cleanup_removed_pixels` and `cleanup_restored_pixels`.
+- **2026-11-16 — Test:** Added regression coverage for both simultaneous edit directions, non-white source-colour restoration, big-endian RGB565, reserved-key collisions, and invalid reference size. Automated tests remain unexecuted in this session; code review and seven-icon visual acceptance remain pending.
 
 
 **Proposed Change**  
@@ -136,6 +139,9 @@ Extend the current extraction tools or add a separate converter for final icon r
 | `icon-devel` | [`6d729bb`](https://github.com/keroblabs/retro-wm/commit/6d729bb9c607597bd01dccd9ce1a635e8e455af8) | `UNREVIEWED` | Export editable per-icon pixel maps and implement manual cleanup |
 | `icon-devel` | [`06fe5cd`](https://github.com/keroblabs/retro-wm/commit/06fe5cd064bf0b01bda171be9a3f4f7a40d61b8b) | `UNREVIEWED` | Add tests for cleanup persistence and stale-mask protection |
 | `icon-devel` | [`155bce9`](https://github.com/keroblabs/retro-wm/commit/155bce9e71414889a47a94546e24ec0b5647fcc8) | `UNREVIEWED` | Document editable pixel map and manual cleanup steps |
+| `icon-devel` | [`9d96da0`](https://github.com/keroblabs/retro-wm/commit/9d96da02194daa6eadda2a7dbdd5a62c4208612e) | `UNREVIEWED` | Restore `.` → `#` pixels from original PNG colour data |
+| `icon-devel` | [`c65c601`](https://github.com/keroblabs/retro-wm/commit/c65c601061eb39db3fb674bda832ac9c621ed26d) | `UNREVIEWED` | Test bidirectional edits, restoration and collision checks |
+| `icon-devel` | [`1062b3c`](https://github.com/keroblabs/retro-wm/commit/1062b3c86e1decabc8e60fb3399a8be03b1e9ede) | `UNREVIEWED` | Document restoring previously transparent pixels |
 
 **Resolution Description**  
 Pending.
