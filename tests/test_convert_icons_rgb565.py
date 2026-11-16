@@ -165,13 +165,15 @@ class IconConversionTests(unittest.TestCase):
             self.assertEqual(rows[3][3], '#')
             self.assertEqual(rows[0][0], '.')
             rows[3] = rows[3][:3] + '.' + rows[3][4:]
+            rows[0] = '#' + rows[0][1:]  # restore previously transparent white
             (settings.mask_dir / 'sample.txt').write_text(
                 '\n'.join(rows) + '\n', encoding='ascii')
             settings.cleanup = True
             module.run(settings)
             cleaned = rawpath.read_bytes()
             pos = (3 * 8 + 3) * 2
-            self.assertEqual(cleaned[:pos], baseline[:pos])
+            self.assertEqual(cleaned[:2], bytes.fromhex('ffff'))
+            self.assertEqual(cleaned[2:pos], baseline[2:pos])
             self.assertEqual(cleaned[pos:pos + 2], bytes.fromhex('1ff8'))
             self.assertEqual(cleaned[pos + 2:], baseline[pos + 2:])
             self.assertEqual((settings.mask_dir / 'sample.txt').read_text().splitlines(),
@@ -179,8 +181,10 @@ class IconConversionTests(unittest.TestCase):
             manifest = json.loads((settings.output_dir / 'manifest.json').read_text())
             self.assertTrue(manifest['cleanup_applied'])
             self.assertEqual(manifest['icons'][0]['cleanup_removed_pixels'], 1)
+            self.assertEqual(manifest['icons'][0]['cleanup_restored_pixels'], 1)
             preview = Image.open(settings.output_dir / 'preview' / 'sample.png')
             self.assertEqual(preview.getpixel((3, 3))[3], 0)
+            self.assertEqual(preview.getpixel((0, 0)), (255, 255, 255, 255))
 
     def test_cleanup_rejects_invalid_maps_and_stale_geometry(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -193,19 +197,25 @@ class IconConversionTests(unittest.TestCase):
             path, metadata = module.pixel_map_paths(folder, 'icon')
             original = path.read_text()
             self.assertEqual(original.splitlines()[0][0], '.')
-            with self.assertRaisesRegex(ValueError, 'cannot restore'):
-                path.write_text('#' + original[1:])
-                module.apply_pixel_cleanup(baseline, (4, 4), 'little',
-                                           0xf81f, path, metadata)
+            restoration_image = Image.new('RGB', (4, 4), (0, 0, 0))
+            restoration_image.putpixel((0, 0), (255, 255, 255))
+            restoration = module.encode_rgb565(restoration_image, 'little')
+            path.write_text('#' + original[1:])
+            restored, removed, added = module.apply_pixel_cleanup(
+                baseline, restoration, (4, 4), 'little', 0xf81f,
+                path, metadata)
+            self.assertEqual((removed, added), (0, 1))
+            self.assertEqual(restored[:2], bytes.fromhex('ffff'))
+            self.assertEqual(restored[2:], baseline[2:])
             path.write_text('###\n')
             with self.assertRaisesRegex(ValueError, 'expected exactly'):
-                module.apply_pixel_cleanup(baseline, (4, 4), 'little',
-                                           0xf81f, path, metadata)
+                module.apply_pixel_cleanup(baseline, restoration, (4, 4),
+                                           'little', 0xf81f, path, metadata)
             path.write_text(original)
             changed = bytearray(baseline)
             changed[2] ^= 1
             with self.assertRaisesRegex(ValueError, 'changed since mask export'):
-                module.apply_pixel_cleanup(bytes(changed), (4, 4),
+                module.apply_pixel_cleanup(bytes(changed), restoration, (4, 4),
                                            'little', 0xf81f, path, metadata)
             # A normal re-export may not silently erase user edits.
             path.write_text('manual edit\n')
@@ -216,6 +226,45 @@ class IconConversionTests(unittest.TestCase):
                                                     (4, 4), 'little', 0xf81f,
                                                     reset=True))
             self.assertEqual(path.read_text(), original)
+
+
+    def test_restoring_original_nonwhite_colour_and_reserved_key_collision(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            baseline = bytes.fromhex('1ff8 0000')  # transparent, black
+            module.export_pixel_map(folder, 'item', baseline, (2, 1),
+                                    'little', 0xf81f)
+            mask, metadata = module.pixel_map_paths(folder, 'item')
+            mask.write_text('##\n', encoding='ascii')
+            original_red = bytes.fromhex('00f8 0000')  # red, black
+            result, removed, restored = module.apply_pixel_cleanup(
+                baseline, original_red, (2, 1), 'little', 0xf81f,
+                mask, metadata)
+            self.assertEqual(result, original_red)
+            self.assertEqual((removed, restored), (0, 1))
+            collision = bytes.fromhex('1ff8 0000')
+            with self.assertRaisesRegex(ValueError, 'collide'):
+                module.apply_pixel_cleanup(
+                    baseline, collision, (2, 1), 'little', 0xf81f,
+                    mask, metadata)
+
+    def test_big_endian_restoration_and_bad_backup_length(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            baseline = bytes.fromhex('f81f 07e0')
+            module.export_pixel_map(folder, 'be', baseline, (2, 1),
+                                    'big', 0xf81f)
+            mask, metadata = module.pixel_map_paths(folder, 'be')
+            mask.write_text('##\n', encoding='ascii')
+            result, removed, restored = module.apply_pixel_cleanup(
+                baseline, bytes.fromhex('001f 07e0'), (2, 1),
+                'big', 0xf81f, mask, metadata)
+            self.assertEqual(result, bytes.fromhex('001f 07e0'))
+            self.assertEqual((removed, restored), (0, 1))
+            with self.assertRaisesRegex(ValueError, 'restoration RGB565'):
+                module.apply_pixel_cleanup(
+                    baseline, b'\\x00', (2, 1), 'big', 0xf81f,
+                    mask, metadata)
 
 
 if __name__ == '__main__':
