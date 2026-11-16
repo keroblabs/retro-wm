@@ -111,7 +111,7 @@ class IconConversionTests(unittest.TestCase):
         strict = module.flood_exterior(image, (255, 255, 255), 4)
         self.assertEqual(strict.getpixel((0, 0)), 255)
         self.assertEqual(module.encode_rgb565(Image.new('RGB', (1, 1), 'white'),
-                                               'little'), b'\\xff\\xff'.decode('unicode_escape').encode('latin1'))
+                                               'little'), bytes.fromhex('ffff'))
 
     def test_big_endian_key_and_reserved_colour_collision(self):
         image = Image.new('RGBA', (2, 1))
