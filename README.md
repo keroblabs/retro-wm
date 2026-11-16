@@ -280,11 +280,14 @@ use a question mark; this is not a Unicode text renderer.
 Each 8x14 glyph occupies 56 bytes: four bytes per row, top to bottom, with the
 left pixel in bits `[3:0]` and the next pixel in bits `[7:4]`. The 12x20 font
 uses the same packing with six bytes per row and 120 bytes per glyph. Before
-drawing a string, the renderer creates a 16-entry native-pixel palette from
-the requested text colour. Levels 1–15 scale each RGB channel by `level / 15`,
-rounded to the nearest integer; level 15 is the exact requested colour. Level
-0 leaves the existing framebuffer pixel untouched. Every theme text role
-gets its own shades through the same API, in both RGB888 and RGB565 builds.
+drawing text, paint its background. Each level is linear opacity: the renderer
+blends the requested text colour with the existing pixel using
+`(text * level + background * (15 - level) + 7) / 15` per eight-bit RGB channel.
+Level 0 leaves the existing pixel untouched; level 15 is the exact requested
+colour, converted to native storage. RGB565 background channels are expanded
+to eight bits before blending, then the result is packed back to RGB565.
+This preserves smooth edges for dark text on light backgrounds as well as
+light text on dark backgrounds. All theme text roles use this same path.
 
 ### Menu API
 

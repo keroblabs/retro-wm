@@ -115,7 +115,8 @@ void wm_canvas_frame(wm_canvas *canvas, wm_rect rect, wm_color color);
 void wm_canvas_text(wm_canvas *canvas, int32_t x, int32_t y,
                     const char *text, wm_color color);
 /* Select font_c8x14 or font_c12x20; wm_canvas_text defaults to font_c8x14.
- * Levels 1..15 scale each RGB channel by level/15; level 0 is transparent.
+ * Levels blend text over the existing pixel with linear opacity level/15.
+ * Level 0 is transparent; level 15 is the exact requested colour.
  * Text advances by the font width; newlines advance by its height plus 4.
  * Bytes outside 0x20..0x7f are drawn as '?'. */
 void wm_canvas_text_font(wm_canvas *canvas, int32_t x, int32_t y,

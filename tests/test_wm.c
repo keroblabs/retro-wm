@@ -146,25 +146,49 @@ static bool packed_font_shades_transparency_and_glyph_order(void)
         WM_RGB(97, 55, 25), WM_RGB(109, 62, 28), WM_RGB(121, 69, 31), WM_RGB(133, 76, 34),
         WM_RGB(145, 82, 38), WM_RGB(157, 89, 41), WM_RGB(169, 96, 44), WM_RGB(181, 103, 47)
     };
-    const wm_color colours[] = {WM_RGB(181, 103, 47), WM_RGB(255, 255, 255), WM_RGB(0, 0, 0)};
+    const wm_color background_shades[] = {
+        WM_RGB(66, 130, 198), WM_RGB(74, 128, 188), WM_RGB(81, 126, 178), WM_RGB(89, 125, 168),
+        WM_RGB(97, 123, 158), WM_RGB(104, 121, 148), WM_RGB(112, 119, 138), WM_RGB(120, 117, 128),
+        WM_RGB(127, 116, 117), WM_RGB(135, 114, 107), WM_RGB(143, 112, 97), WM_RGB(150, 110, 87),
+        WM_RGB(158, 108, 77), WM_RGB(166, 107, 67), WM_RGB(173, 105, 57), WM_RGB(181, 103, 47)
+    };
+    const wm_color colours[] = {
+        WM_RGB(181, 103, 47), WM_RGB(255, 255, 255), WM_RGB(0, 0, 0), WM_RGB(181, 103, 47)
+    };
+    const wm_color backgrounds[] = {
+        WM_RGB(0, 0, 0), WM_RGB(0, 0, 0), WM_RGB(255, 255, 255), WM_RGB(66, 130, 198)
+    };
     const char *levels = "0123456789ABCDEF";
     for (size_t c = 0; c < sizeof(colours) / sizeof(colours[0]); ++c) {
         CHECK(setup(&f));
+        wm_canvas_fill(&canvas, (wm_rect){7, 9, 16, 14}, backgrounds[c]);
+        if (c == 3) {
+            for (int32_t x = 8; x < 23; x += 2) {
+                wm_canvas_fill(&canvas, (wm_rect){x, 9, 1, 14}, WM_RGB(0, 0, 0));
+            }
+        }
         wm_canvas_text(&canvas, 7, 9, "A/", colours[c]);
         unsigned seen = 0;
         for (int32_t y = 0; y < HEIGHT; ++y) {
             for (int32_t x = 0; x < WIDTH; ++x) {
                 unsigned level = 0;
-                if (x >= 10 && x < 26 && y >= 14 && y < 28) {
+                bool inside = x >= 10 && x < 26 && y >= 14 && y < 28;
+                if (inside) {
                     const char *hex = strchr(levels, rows[y - 14][x - 10]);
                     CHECK(hex != NULL);
                     level = (unsigned)(hex - levels);
                     seen |= 1u << level;
                 }
-                wm_color expected = c == 0 ? shades[level]
-                                 : c == 1 ? WM_RGB(17 * level, 17 * level, 17 * level)
-                                          : WM_RGB(0, 0, 0);
-                CHECK(pixel(&f, x, y) == (level == 0 ? GUARD : wm_color_to_pixel(expected)));
+                wm_color expected = shades[level];
+                if (c == 1) {
+                    expected = WM_RGB(17 * level, 17 * level, 17 * level);
+                } else if (c == 2) {
+                    unsigned shade = 255 - 17 * level;
+                    expected = WM_RGB(shade, shade, shade);
+                } else if (c == 3 && x % 2 == 0) {
+                    expected = background_shades[level];
+                }
+                CHECK(pixel(&f, x, y) == (inside ? wm_color_to_pixel(expected) : GUARD));
             }
             for (size_t x = WIDTH; x < STRIDE; ++x) {
                 CHECK(f.framebuffer.pixels[(size_t)y * STRIDE + x] == GUARD);
@@ -208,12 +232,13 @@ static bool text_font_selection_spacing_and_fallback(void)
         }
     }
     CHECK(setup(&f));
+    wm_canvas_fill(&canvas, (wm_rect){0, 0, 12, 20}, WM_RGB(0, 0, 0));
     wm_canvas_text_font(&canvas, 0, 0, "A", WM_RGB(255, 255, 255), &font_c12x20);
     /* 12x20 A: full brightness at (5,1), level 2 at (4,1), level 11 at (10,12). */
     CHECK(pixel_is(&f, 5, 1, WM_RGB(255, 255, 255)));
     CHECK(pixel_is(&f, 4, 1, WM_RGB(34, 34, 34)));
     CHECK(pixel_is(&f, 10, 12, WM_RGB(187, 187, 187)));
-    CHECK(pixel(&f, 0, 0) == GUARD);
+    CHECK(pixel_is(&f, 0, 0, WM_RGB(0, 0, 0)));
     return true;
 }
 

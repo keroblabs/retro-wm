@@ -453,24 +453,34 @@ void wm_canvas_frame(wm_canvas *canvas, wm_rect rect, wm_color color)
     fill_absolute(canvas, x + rect.width - 1, y, 1, rect.height, color);
 }
 
-enum { TEXT_LEVELS = 16 };
-
-static void text_palette(wm_pixel palette[TEXT_LEVELS], wm_color color)
+static wm_pixel blend_text_pixel(wm_pixel background, wm_color color, unsigned level)
 {
-    uint32_t red = (color >> 16) & 0xff;
-    uint32_t green = (color >> 8) & 0xff;
-    uint32_t blue = color & 0xff;
-    for (uint32_t level = 0; level < TEXT_LEVELS; ++level) {
-        palette[level] = wm_color_to_pixel(WM_RGB(
-            (red * level + 7) / 15,
-            (green * level + 7) / 15,
-            (blue * level + 7) / 15));
+    if (level == 15) {
+        return wm_color_to_pixel(color | UINT32_C(0xff000000));
     }
+#if WM_PIXEL_FORMAT == WM_PIXEL_FORMAT_RGB565
+    uint32_t red = (background >> 11) & 0x1f;
+    uint32_t green = (background >> 5) & 0x3f;
+    uint32_t blue = background & 0x1f;
+    /* Expand native channels to eight bits before blending. */
+    red = (red << 3) | (red >> 2);
+    green = (green << 2) | (green >> 4);
+    blue = (blue << 3) | (blue >> 2);
+#else
+    uint32_t red = (background >> 16) & 0xff;
+    uint32_t green = (background >> 8) & 0xff;
+    uint32_t blue = background & 0xff;
+#endif
+    unsigned inverse = 15 - level;
+    return wm_color_to_pixel(WM_RGB(
+        (((color >> 16) & 0xff) * level + red * inverse + 7) / 15,
+        (((color >> 8) & 0xff) * level + green * inverse + 7) / 15,
+        ((color & 0xff) * level + blue * inverse + 7) / 15));
 }
 
 static void draw_character(wm_canvas *canvas, int64_t x, int64_t y,
                            unsigned char character, const font_data_t *font,
-                           const wm_pixel palette[TEXT_LEVELS])
+                           wm_color color)
 {
     int64_t left = x, top = y;
     int64_t right = x + font->width, bottom = y + font->height;
@@ -497,7 +507,9 @@ static void draw_character(wm_canvas *canvas, int64_t x, int64_t y,
             size_t glyph_x = (size_t)(col - x);
             uint8_t packed = source[glyph_x / 2];
             unsigned level = (packed >> (4 * (glyph_x % 2))) & 0x0f;
-            if (level != 0) pixels[col] = palette[level];
+            if (level != 0) {
+                pixels[col] = blend_text_pixel(pixels[col], color, level);
+            }
         }
     }
 }
@@ -514,8 +526,6 @@ void wm_canvas_text_font(wm_canvas *canvas, int32_t x, int32_t y,
 {
     assert(canvas != NULL && canvas->framebuffer != NULL && text != NULL);
     assert(font == &font_c8x14 || font == &font_c12x20);
-    wm_pixel palette[TEXT_LEVELS];
-    text_palette(palette, color);
     int64_t cursor_x = (int64_t)canvas->origin_x + x;
     int64_t cursor_y = (int64_t)canvas->origin_y + y;
     int64_t start_x = cursor_x;
@@ -525,7 +535,7 @@ void wm_canvas_text_font(wm_canvas *canvas, int32_t x, int32_t y,
             cursor_y += font->height + 4;
             continue;
         }
-        draw_character(canvas, cursor_x, cursor_y, (unsigned char)*text, font, palette);
+        draw_character(canvas, cursor_x, cursor_y, (unsigned char)*text, font, color);
         cursor_x += font->width;
     }
 }
