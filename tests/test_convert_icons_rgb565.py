@@ -64,7 +64,8 @@ class IconConversionTests(unittest.TestCase):
                   size=32, threshold=12, source_padding=2, canvas_padding=2,
                   background=(255, 255, 255), endian='little',
                   colour_key=0xF81F, flood_tolerance=24, alpha_cutoff=128,
-                  opaque=False, crop_config=overrides, analyse_only=False))()
+                  opaque=False, crop_config=overrides, analyse_only=False,
+                  cleanup=False, reset_maps=False, mask_dir=root / 'masks'))()
             module.run(args)
             data = (args.output_dir / 'raw' / 'sample.rgb565').read_bytes()
             self.assertEqual(len(data), 32 * 32 * 2)
@@ -79,6 +80,13 @@ class IconConversionTests(unittest.TestCase):
             preview = Image.open(args.output_dir / 'preview' / 'sample.png')
             self.assertEqual(preview.mode, 'RGBA')
             self.assertEqual(preview.getpixel((0, 0))[3], 0)
+            pixel_map = args.mask_dir / 'sample.txt'
+            self.assertTrue(pixel_map.exists())
+            rows = pixel_map.read_text(encoding='ascii').splitlines()
+            self.assertEqual(len(rows), 32)
+            self.assertTrue(all(len(row) == 32 and set(row) <= set('#.')
+                                for row in rows))
+            self.assertEqual(rows[0][0], '.')
 
 
     def test_flood_preserves_enclosed_white_and_distinct_opaque_white(self):
@@ -127,6 +135,87 @@ class IconConversionTests(unittest.TestCase):
         self.assertEqual(module.parse_colour_key('0xf81f'), 0xf81f)
         with self.assertRaises(Exception):
             module.parse_colour_key('0x10000')
+
+
+    def test_manual_cleanup_only_changes_selected_pixels(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            incoming = root / 'input'
+            incoming.mkdir()
+            source = Image.new('RGB', (8, 8), 'white')
+            for y in range(2, 6):
+                for x in range(2, 6):
+                    source.putpixel((x, y), (0, 0, 0))
+            source.save(incoming / 'sample.png')
+            settings = type('Args', (), dict(
+                input_dir=incoming, output_dir=root / 'generated',
+                size=8, threshold=12, source_padding=0, canvas_padding=0,
+                background=(255, 255, 255), endian='little',
+                colour_key=0xF81F, flood_tolerance=24, alpha_cutoff=128,
+                opaque=False, crop_config=None, analyse_only=False,
+                cleanup=False, reset_maps=False, mask_dir=root / 'masks'))()
+            # Use a manual full-image crop to obtain exact pixel correspondence.
+            cfg = root / 'crops.json'
+            cfg.write_text(json.dumps({'sample.png': [0, 0, 8, 8]}))
+            settings.crop_config = cfg
+            module.run(settings)
+            rawpath = settings.output_dir / 'raw' / 'sample.rgb565'
+            baseline = rawpath.read_bytes()
+            rows = (settings.mask_dir / 'sample.txt').read_text().splitlines()
+            self.assertEqual(rows[3][3], '#')
+            self.assertEqual(rows[0][0], '.')
+            rows[3] = rows[3][:3] + '.' + rows[3][4:]
+            (settings.mask_dir / 'sample.txt').write_text(
+                '\n'.join(rows) + '\n', encoding='ascii')
+            settings.cleanup = True
+            module.run(settings)
+            cleaned = rawpath.read_bytes()
+            pos = (3 * 8 + 3) * 2
+            self.assertEqual(cleaned[:pos], baseline[:pos])
+            self.assertEqual(cleaned[pos:pos + 2], bytes.fromhex('1ff8'))
+            self.assertEqual(cleaned[pos + 2:], baseline[pos + 2:])
+            self.assertEqual((settings.mask_dir / 'sample.txt').read_text().splitlines(),
+                             rows)
+            manifest = json.loads((settings.output_dir / 'manifest.json').read_text())
+            self.assertTrue(manifest['cleanup_applied'])
+            self.assertEqual(manifest['icons'][0]['cleanup_removed_pixels'], 1)
+            preview = Image.open(settings.output_dir / 'preview' / 'sample.png')
+            self.assertEqual(preview.getpixel((3, 3))[3], 0)
+
+    def test_cleanup_rejects_invalid_maps_and_stale_geometry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            rgb = Image.new('RGBA', (4, 4), (0, 0, 0, 255))
+            rgb.putpixel((0, 0), (0, 0, 0, 0))
+            baseline = module.encode_rgb565(rgb, 'little', 0xf81f)
+            module.export_pixel_map(folder, 'icon', baseline, (4, 4),
+                                    'little', 0xf81f)
+            path, metadata = module.pixel_map_paths(folder, 'icon')
+            original = path.read_text()
+            self.assertEqual(original.splitlines()[0][0], '.')
+            with self.assertRaisesRegex(ValueError, 'cannot restore'):
+                path.write_text('#' + original[1:])
+                module.apply_pixel_cleanup(baseline, (4, 4), 'little',
+                                           0xf81f, path, metadata)
+            path.write_text('###\n')
+            with self.assertRaisesRegex(ValueError, 'expected exactly'):
+                module.apply_pixel_cleanup(baseline, (4, 4), 'little',
+                                           0xf81f, path, metadata)
+            path.write_text(original)
+            changed = bytearray(baseline)
+            changed[2] ^= 1
+            with self.assertRaisesRegex(ValueError, 'changed since mask export'):
+                module.apply_pixel_cleanup(bytes(changed), (4, 4),
+                                           'little', 0xf81f, path, metadata)
+            # A normal re-export may not silently erase user edits.
+            path.write_text('manual edit\n')
+            self.assertFalse(module.export_pixel_map(folder, 'icon', baseline,
+                                                     (4, 4), 'little', 0xf81f))
+            self.assertEqual(path.read_text(), 'manual edit\n')
+            self.assertTrue(module.export_pixel_map(folder, 'icon', baseline,
+                                                    (4, 4), 'little', 0xf81f,
+                                                    reset=True))
+            self.assertEqual(path.read_text(), original)
 
 
 if __name__ == '__main__':
