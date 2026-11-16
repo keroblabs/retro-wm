@@ -231,10 +231,15 @@ def export_pixel_map(directory: Path, name: str, data: bytes,
     return True
 
 
-def apply_pixel_cleanup(data: bytes, size: tuple[int, int],
-                        endian: str, colour_key: int,
-                        mask_path: Path, meta_path: Path) -> tuple[bytes, int]:
-    """Replace selected opaque pixels with key; never change opaque colours."""
+def apply_pixel_cleanup(data: bytes, restore_data: bytes,
+                        size: tuple[int, int], endian: str, colour_key: int,
+                        mask_path: Path, meta_path: Path) -> tuple[bytes, int, int]:
+    """Apply both mask edit directions without changing unedited RGB565 words.
+
+    restore_data is an independently rendered, fully opaque RGB565 copy of
+    the same source/crop/layout. A colour-keyed pixel has lost its original
+    RGB565 value, so it cannot be recovered from data alone.
+    """
     if not mask_path.is_file() or not meta_path.is_file():
         raise ValueError(f"{mask_path}: missing mask or metadata; run conversion "
                          "once without --cleanup to export initial maps")
@@ -243,25 +248,32 @@ def apply_pixel_cleanup(data: bytes, size: tuple[int, int],
         raise ValueError(f"{mask_path}: source/crop/options changed since mask export; "
                          "review and regenerate with --reset-maps (overwrites edits)")
     width, height = size
+    if len(restore_data) != len(data) or len(data) != width * height * 2:
+        raise ValueError("restoration RGB565 data must match the baseline dimensions")
     rows = mask_path.read_text(encoding="ascii").splitlines()
     if len(rows) != height or any(len(row) != width for row in rows):
         raise ValueError(f"{mask_path}: expected exactly {height} rows of {width} pixels")
     if any(character not in "#." for row in rows for character in row):
         raise ValueError(f"{mask_path}: only # (opaque) and . (transparent) are valid")
-    original = pixel_map_rows(data, size, endian, colour_key)
-    for y, (edited, source) in enumerate(zip(rows, original)):
-        for x, (want, was) in enumerate(zip(edited, source)):
-            if want == "#" and was == ".":
-                raise ValueError(f"{mask_path}: cannot restore transparent pixel "
-                                 f"at ({x}, {y}); cleanup only changes # to .")
     output = bytearray(data)
     key_bytes = struct.pack("<H" if endian == "little" else ">H", colour_key)
-    cleared = 0
+    cleared, restored = 0, 0
     for index, character in enumerate("".join(rows)):
-        if character == "." and output[index * 2:index * 2 + 2] != key_bytes:
-            output[index * 2:index * 2 + 2] = key_bytes
+        start = index * 2
+        was_keyed = data[start:start + 2] == key_bytes
+        if character == "." and not was_keyed:
+            output[start:start + 2] = key_bytes
             cleared += 1
-    return bytes(output), cleared
+        elif character == "#" and was_keyed:
+            original_word = restore_data[start:start + 2]
+            if original_word == key_bytes:
+                x, y = index % width, index // width
+                raise ValueError(f"{mask_path}: restored pixel ({x}, {y}) "
+                                 "would collide with the reserved RGB565 colour key; "
+                                 "choose another --colour-key")
+            output[start:start + 2] = original_word
+            restored += 1
+    return bytes(output), cleared, restored
 
 
 def contact_sheet(records, source_images, previews, target: Path, background):
@@ -349,14 +361,22 @@ def run(args):
                                      args.background, alpha)
         binary = encode_rgb565(rendered, args.endian, colour_key, args.alpha_cutoff)
         cleaned_pixels = 0
+        restored_pixels = 0
         mask_file = None
         if colour_key is not None and not args.analyse_only:
             mask_path, meta_path = pixel_map_paths(args.mask_dir, path.stem)
             mask_file = str(mask_path)
             if args.cleanup:
-                binary, cleaned_pixels = apply_pixel_cleanup(
-                    binary, rendered.size, args.endian, colour_key,
-                    mask_path, meta_path)
+                # Colour-keyed data no longer contains the colours of
+                # transparent pixels. Render the same source/crop/scale
+                # without the mask to recover a selected pixel's RGB565.
+                opaque_rendered, _ = layout(
+                    source, crop, args.size, args.canvas_padding,
+                    args.background)
+                restore_data = encode_rgb565(opaque_rendered, args.endian)
+                binary, cleaned_pixels, restored_pixels = apply_pixel_cleanup(
+                    binary, restore_data, rendered.size, args.endian,
+                    colour_key, mask_path, meta_path)
             else:
                 exported = export_pixel_map(
                     args.mask_dir, path.stem, binary, rendered.size,
@@ -374,6 +394,7 @@ def run(args):
             "raw_file": f"raw/{path.stem}.rgb565", "byte_count": len(binary),
             "transparent_pixels": transparent_count,
             "cleanup_removed_pixels": cleaned_pixels,
+            "cleanup_restored_pixels": restored_pixels,
             "editable_pixel_map": mask_file,
         }
         records.append(item)
@@ -429,7 +450,7 @@ def main():
     parser.add_argument("--mask-dir", type=Path, default=Path("icons/masks"),
                         help="editable pixel map directory (default: icons/masks)")
     parser.add_argument("--cleanup", action="store_true",
-                        help="apply edited #/. text maps, clearing marked pixels to the RGB565 key")
+                        help="apply edited #/. maps: # to . clears, . to # restores source colours")
     parser.add_argument("--reset-maps", action="store_true",
                         help="explicitly overwrite existing pixel maps and metadata; destroys manual edits")
     parser.add_argument("--crop-config", type=Path, default=None,
