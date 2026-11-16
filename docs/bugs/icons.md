@@ -16,7 +16,7 @@ Follow the status rules in the methodology.
 | --- | --- | --- |
 | `RWM-ICO-0001` | `OPEN` | Define portable icon resource descriptors and identifiers |
 | `RWM-ICO-0002` | `OPEN` | Implement clipped icon rendering on the software canvas |
-| `RWM-ICO-0003` | `OPEN` | Establish a reproducible icon import and build-time conversion workflow |
+| `RWM-ICO-0003` | `IN_PROGRESS` | Establish a reproducible icon import and build-time conversion workflow |
 | `RWM-ICO-0004` | `OPEN` | Integrate optional icons into selected UI components and demo |
 
 ## Issues
@@ -88,7 +88,7 @@ Pending.
 ### RWM-ICO-0003
 
 **ID:** `RWM-ICO-0003`  
-**Status:** `OPEN`  
+**Status:** `IN_PROGRESS`  
 **Title:** Establish a reproducible icon import and build-time conversion workflow
 
 **Description**  
@@ -103,6 +103,11 @@ Exploratory extracted images are not yet production-ready assets. Reusing them w
 
 **Notes**
 - **2026-11-16 — Discovery:** Registered from the Retro WM architectural review and follow-up task planning. Initial evidence is a source inspection; implementation and target hardware validation have not been carried out.
+- **2026-11-16 — Investigation:** Inspected seven selected 88×88 RGB PNGs on the icon-devel branch. Their content bounds and surrounding opaque white areas differ; measured candidate bounds are recorded in icons/images/README.md. No source PNGs were modified.
+- **2026-11-16 — Decision:** Use a preliminary 64×64 RGB565 output canvas with aspect-ratio-preserving scaling, 3-pixel destination padding, and editable crop proposals based on near-white thresholding and source padding. Default output is opaque little-endian RGB565; transparency requires separate review under RWM-ICO-0001/0002.
+- **2026-11-16 — Implementation:** Added tools/convert_icons_rgb565.py, icons/images/crop-proposals.json, icons/images/README.md, tests/test_convert_icons_rgb565.py and ignored generated output. The converter produces headerless binary files, quantized previews, a manifest, and a crop contact sheet.
+- **2026-11-16 — Test:** Four synthetic Pillow-based unit tests passed locally: RGB565 packing/endianness, crop bounds/layout, invalid crop validation and RGBA-matte batch output. Actual source PNGs were inspected and content bounds measured separately; running the Python converter against all seven repo PNGs and manual review of generated previews remain outstanding.
+- **2026-11-16 — Status Change:** OPEN → IN_PROGRESS. This initial conversion utility is not accepted as the complete icon asset pipeline. Review and further asset/licence decisions are pending.
 
 
 **Proposed Change**  
@@ -112,6 +117,11 @@ Extend the current extraction tools or add a separate converter for final icon r
 
 | Branch | Commit (short hash) | Review Status | Description |
 | --- | --- | --- | --- |
+| `icon-devel` | [`1ea7402`](https://github.com/keroblabs/retro-wm/commit/1ea740220737149db3df917687cfd0b17e70a65e) | `UNREVIEWED` | Add crop analysis and RGB565 conversion script |
+| `icon-devel` | [`77a012a`](https://github.com/keroblabs/retro-wm/commit/77a012aa4d61a172621e85ef52a0eef2258c207a) | `UNREVIEWED` | Add synthetic conversion tests |
+| `icon-devel` | [`a570789`](https://github.com/keroblabs/retro-wm/commit/a57078939185e55167685e84abebc48716b611a4) | `UNREVIEWED` | Record editable proposed crop rectangles |
+| `icon-devel` | [`ca67790`](https://github.com/keroblabs/retro-wm/commit/ca67790db49405d86016c38dfbee96ad4fccd763) | `UNREVIEWED` | Document analysis, processing and review workflow |
+| `icon-devel` | [`8df32fd`](https://github.com/keroblabs/retro-wm/commit/8df32fd96699a80ebccf45200574707b8a7fd20a) | `UNREVIEWED` | Ignore generated RGB565 assets |
 
 **Resolution Description**  
 Pending.
