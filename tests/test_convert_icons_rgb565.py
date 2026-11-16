@@ -65,7 +65,8 @@ class IconConversionTests(unittest.TestCase):
                   background=(255, 255, 255), endian='little',
                   colour_key=0xF81F, flood_tolerance=24, alpha_cutoff=128,
                   opaque=False, crop_config=overrides, analyse_only=False,
-                  cleanup=False, reset_maps=False, mask_dir=root / 'masks'))()
+                  cleanup=False, reset_maps=False, mask_dir=root / 'masks',
+                  no_c=False))()
             module.run(args)
             data = (args.output_dir / 'raw' / 'sample.rgb565').read_bytes()
             self.assertEqual(len(data), 32 * 32 * 2)
@@ -87,6 +88,14 @@ class IconConversionTests(unittest.TestCase):
             self.assertTrue(all(len(row) == 32 and set(row) <= set('#.')
                                 for row in rows))
             self.assertEqual(rows[0][0], '.')
+            c_header = args.output_dir / 'c' / 'sample.h'
+            c_source = args.output_dir / 'c' / 'sample.c'
+            self.assertTrue(c_header.is_file())
+            self.assertTrue(c_source.is_file())
+            self.assertIn('extern const icon_t sample;', c_header.read_text())
+            self.assertIn('.pixel_type = WM_ICON_PIXEL_RGB565', c_source.read_text())
+            self.assertIn('UINT32_C(0x0000F81F)', c_source.read_text())
+            self.assertIn('0xF81Fu', c_source.read_text())
 
 
     def test_flood_preserves_enclosed_white_and_distinct_opaque_white(self):
@@ -153,7 +162,8 @@ class IconConversionTests(unittest.TestCase):
                 background=(255, 255, 255), endian='little',
                 colour_key=0xF81F, flood_tolerance=24, alpha_cutoff=128,
                 opaque=False, crop_config=None, analyse_only=False,
-                cleanup=False, reset_maps=False, mask_dir=root / 'masks'))()
+                cleanup=False, reset_maps=False, mask_dir=root / 'masks',
+                no_c=False))()
             # Use a manual full-image crop to obtain exact pixel correspondence.
             cfg = root / 'crops.json'
             cfg.write_text(json.dumps({'sample.png': [0, 0, 8, 8]}))
@@ -182,6 +192,9 @@ class IconConversionTests(unittest.TestCase):
             self.assertTrue(manifest['cleanup_applied'])
             self.assertEqual(manifest['icons'][0]['cleanup_removed_pixels'], 1)
             self.assertEqual(manifest['icons'][0]['cleanup_restored_pixels'], 1)
+            c_source = (settings.output_dir / 'c' / 'sample.c').read_text()
+            self.assertEqual(manifest['icons'][0]['c_symbol'], 'sample')
+            self.assertIn('0xFFFFu', c_source)  # restored white at (0, 0)
             preview = Image.open(settings.output_dir / 'preview' / 'sample.png')
             self.assertEqual(preview.getpixel((3, 3))[3], 0)
             self.assertEqual(preview.getpixel((0, 0)), (255, 255, 255, 255))
@@ -265,6 +278,33 @@ class IconConversionTests(unittest.TestCase):
                 module.apply_pixel_cleanup(
                     baseline, b'\\x00', (2, 1), 'big', 0xf81f,
                     mask, metadata)
+
+
+    def test_generate_rgb565_c_arrays_and_raw_byte_order(self):
+        red_green = Image.new('RGB', (2, 1))
+        red_green.putdata([(255, 0, 0), (0, 255, 0)])
+        for endian in ('little', 'big'):
+            raw = module.encode_rgb565(red_green, endian)
+            header, source = module.generate_c_icon(
+                'icon-test', raw, (2, 1), endian, 0xf81f)
+            self.assertIn('extern const icon_t icon_test;', header)
+            self.assertIn('#include "icon-test.h"', source)
+            self.assertIn('0xF800u, 0x07E0u', source)
+            self.assertIn('.width = 2u', source)
+            self.assertIn('.height = 1u', source)
+            self.assertIn('.pixel_type = WM_ICON_PIXEL_RGB565', source)
+            self.assertIn('.colour_key = UINT32_C(0x0000F81F)', source)
+            no_key_header, no_key_source = module.generate_c_icon(
+                'opaque', raw, (2, 1), endian, None)
+            self.assertIn('.colour_key = WM_ICON_COLOUR_KEY_NONE',
+                          no_key_source)
+            self.assertIn('extern const icon_t opaque;', no_key_header)
+        self.assertEqual(module.icon_symbol('12-name'), '_12_name')
+        with self.assertRaisesRegex(ValueError, 'must be packed RGB565'):
+            module.generate_c_icon('bad', b'\x00', (2, 1), 'little', 0xf81f)
+        with self.assertRaisesRegex(ValueError, 'fit into uint16_t'):
+            module.generate_c_icon('large', b'', (65536, 1), 'little', 0xf81f)
+
 
 
 if __name__ == '__main__':
