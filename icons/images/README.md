@@ -99,10 +99,10 @@ Run `--help` for the complete set. Source PNGs are never modified.
 
 ## Editable pixel maps and manual cleanup
 
-Automatic flood fill is conservative, but isolated near-white source artifacts
-may survive. To remove individual unwanted pixels **without changing any other
-RGB565 values**, every normal colour-key conversion now exports an editable
-pixel map for each icon under `icons/masks/`:
+Automatic flood fill is conservative, but it can leave isolated source artifacts
+or accidentally remove light-coloured details. To correct **either mistake**
+without changing unrelated RGB565 values, every normal colour-key conversion
+exports an editable pixel map for each icon under `icons/masks/`:
 
 - `icon_drive.txt` etc.: plain-text **64 rows × 64 columns** by default.
   `#` means the pixel is opaque; `.` means RGB565 transparency key `0xF81F`.
@@ -117,9 +117,18 @@ pixel map for each icon under `icons/masks/`:
         --crop-config icons/images/crop-proposals.json
 
 **Edit** `icons/masks/icon_drive.txt` (and the other maps) in any plain-text
-editor. Change **only unwanted opaque `#` pixels to `.`**, keeping the grid
-size intact. This is a *removal-only* operation; you cannot turn existing
-transparent dots back into opaque artwork.
+editor, preserving the exact grid dimensions:
+
+- Change an unwanted opaque `#` to `.` to make that pixel transparent.
+- Change a mistakenly transparent `.` to `#` to **restore its RGB565 colour
+  from the original source PNG** (using the same crop and resizing settings).
+  It is not possible to recover the colour from the colour-keyed RGB565 alone.
+
+The converter rebuilds the source colours during cleanup. For a white exterior
+pixel, `.` → `#` restores opaque white (`0xFFFF`); for a coloured pixel,
+its corresponding quantized colour is restored. If a restored colour equals
+the reserved transparency key, the converter reports a collision and asks for
+a different `--colour-key` instead of silently losing the pixel.
 
 **Second pass**, apply your edited maps:
 
@@ -127,10 +136,11 @@ transparent dots back into opaque artwork.
         --crop-config icons/images/crop-proposals.json --cleanup
 
 This updates `icons/converted/raw/*.rgb565` and the RGBA previews/contact
-sheet. It **does not rewrite the text maps**. The manifest reports how many
-pixels were manually cleared per icon. Unchanged `#` pixels retain exactly
-their original RGB565 values; the script only writes the reserved key at
-selected `.` positions. There is no extra alpha buffer in the binary file.
+sheet. It **does not rewrite the text maps**. The manifest separately reports
+`cleanup_removed_pixels` (`#` → `.`) and `cleanup_restored_pixels`
+(`.` → `#`). Unedited pixels retain exactly their original RGB565 values.
+Restored pixels use colours recomputed from the original image, not guessed
+from the key. There is no extra alpha buffer in the binary file.
 
 The editable `icons/masks/` directory is deliberately **not gitignored**:
 after approving a cleaned mask you may commit its text and JSON metadata to
@@ -159,6 +169,9 @@ outputs remain ignored as reproducible build artifacts.
 - Manual cleanup edits individual **output** pixels at the selected final
   resolution. Re-export the maps before changing icon size, crop or scale;
   otherwise coordinates will no longer refer to the same artwork.
+- A restored `.` pixel comes from a separately resized opaque source image.
+  Soft alpha transitions remain binary after encoding; an accidentally
+  removed colour can be recovered, but not subpixel alpha blending.
 - A transparent key in RGB565 is an **asset encoding convention**, not
   automatic transparency in the framebuffer or SDL texture. The renderer
   implementation remains tracked by `RWM-ICO-0001` / `RWM-ICO-0002`.
