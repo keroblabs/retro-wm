@@ -316,7 +316,7 @@ def generate_c_icon(name: str, data: bytes, size: tuple[int, int],
            else f"UINT32_C(0x{colour_key:08X})")
     source = (
         f"/* Generated RGB565 asset; source format is independent of WM_PIXEL_FORMAT. */\n"
-        f'#include "{name}.h"\n\n'
+        f'#include "{symbol}.h"\n\n'
         f"static const uint16_t {symbol}_pixels[{width * height}] = {{\n"
         + "\n".join(rows)
         + f"\n}};\n\n"
@@ -459,8 +459,8 @@ def run(args):
             "cleanup_removed_pixels": cleaned_pixels,
             "cleanup_restored_pixels": restored_pixels,
             "editable_pixel_map": mask_file,
-            "c_header": (f"c/{path.stem}.h" if not args.no_c else None),
-            "c_source": (f"c/{path.stem}.c" if not args.no_c else None),
+            "c_header": (f"c/{icon_symbol(path.stem)}.h" if not args.no_c else None),
+            "c_source": (f"c/{icon_symbol(path.stem)}.c" if not args.no_c else None),
             "c_symbol": icon_symbol(path.stem) if not args.no_c else None,
         }
         records.append(item)
