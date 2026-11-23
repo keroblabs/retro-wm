@@ -2,3 +2,5 @@
 icons/newaita/icons
 icons/original/
 /icons/converted/
+.vscode
+.wayland.env
