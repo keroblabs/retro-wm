@@ -17,6 +17,7 @@ Follow the status rules in the methodology.
 | `RWM-CFG-0001` | `OPEN` | Select logical display resolution at compile time |
 | `RWM-CFG-0002` | `OPEN` | Expand themes beyond colours to fonts and visual metrics |
 | `RWM-CFG-0003` | `OPEN` | Allow build-time configuration of toolkit capacity limits |
+| `RWM-CFG-0004` | `OPEN` | Document a repeatable SDL-free dual-pixel-format regression |
 
 ## Issues
 
@@ -107,6 +108,33 @@ Fixed limits on windows, menus and menu items may not fit all future resource-co
 
 **Proposed Change**  
 Consider a central compile-time configuration header or CMake definitions with documented defaults and minimum/maximum constraints. Verify object size and API compatibility before adopting a mechanism.
+
+**Commits**
+
+| Branch | Commit (short hash) | Review Status | Description |
+| --- | --- | --- | --- |
+
+**Resolution Description**  
+Pending.
+
+
+### RWM-CFG-0004
+
+**ID:** `RWM-CFG-0004`  
+**Status:** `OPEN`  
+**Title:** Document a repeatable SDL-free dual-pixel-format regression
+
+**Description**  
+The README documents individual builds, but a small standalone validation guide would make repeatable SDL-free testing of both supported pixel formats easier for developers and automated workers.
+
+**Details**  
+Source baseline: main commit `9cad558229736da7a7316ed24809474980226aeb`. Designated working branch: `factory-m1-trial`. Acceptance: create only `docs/core-regression.md` with copyable CMake configure/build/CTest commands for RGB888 and RGB565, separate build directories, explicit SDL-free and testing settings, expected failure handling, and an explanation of what the tests do not verify. Use existing README and CMakeLists.txt as evidence. No source, build-system or existing documentation changes. The operator may independently run both build/test sequences; do not claim results not observed.
+
+**Notes**
+- **2026-11-24 — Discovery:** Selected as a bounded first Software Factory integration fixture. This ticket records the proposed task; execution requires explicit operator approval of the pinned revision. Human review remains mandatory.
+
+**Proposed Change**  
+Add the standalone Markdown validation guide. Keep the current project build and existing ticket methodology unchanged.
 
 **Commits**
 
