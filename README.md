@@ -69,8 +69,8 @@ packed 24-bit storage. At 960x640 with no row padding, the framebuffer occupies
 The public [retro_pixel.h](include/retro_pixel.h) macro is `WM_PIXEL_FORMAT`,
 set to `WM_PIXEL_FORMAT_RGB565` or `WM_PIXEL_FORMAT_RGB888`. CMake exports this
 definition through both toolkit and SDL-adapter targets. Without CMake, pass
-`-DWM_PIXEL_FORMAT=WM_PIXEL_FORMAT_RGB565` consistently to every translation
-unit, or omit it for RGB888. Unsupported formats fail configuration/compilation.
+`-DWM_PIXEL_FORMAT=WM_PIXEL_FORMAT_RGB565` consistently to every translation unit,
+or omit it for RGB888. Unsupported formats fail configuration/compilation.
 Rebuild all components when changing formats; do not mix libraries compiled
 with different pixel settings.
 
@@ -118,9 +118,9 @@ platform/sdl/sdl_host       Future RISC-V adapter
        +---- wm_event / framebuffer ----+
                          |
               application event loop
-              /                    \\
+              /                    \
       demo_app (replaceable)       ui_context (reusable)
-      content and commands        /                \\
+      content and commands        /                \
                             wm_context         rm_context
 ```
 
@@ -227,7 +227,7 @@ wm_theme theme = wm_theme_colour();
 theme.menu.dropdown_background = WM_RGB(245, 241, 224);
 wm_status status = wm_set_theme(&ui.windows, &theme);
 if (status != WM_OK) {
-    fprintf(stderr, "Theme: %s\\n", wm_status_string(status));
+    fprintf(stderr, "Theme: %s\n", wm_status_string(status));
 }
 ```
 
@@ -369,7 +369,7 @@ ctest --test-dir build-core --output-on-failure
 For host-side memory/undefined-behavior checks:
 
 ```sh
-cmake -S . -B build-sanitize -DRETRO_WM_BUILD_DEMO=OFF \\
+cmake -S . -B build-sanitize -DRETRO_WM_BUILD_DEMO=OFF \
   -DRETRO_WM_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
 cmake --build build-sanitize
 ctest --test-dir build-sanitize --output-on-failure
