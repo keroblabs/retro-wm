@@ -4,6 +4,7 @@
 #include "retro_types.h"
 #include "retro_theme.h"
 #include "retro_font.h"
+#include "retro_icon.h"
 
 enum {
     WM_MAX_WINDOWS = 8,
@@ -112,6 +113,10 @@ wm_status wm_render(wm_context *context, wm_framebuffer *framebuffer);
 
 void wm_canvas_fill(wm_canvas *canvas, wm_rect rect, wm_color color);
 void wm_canvas_frame(wm_canvas *canvas, wm_rect rect, wm_color color);
+/* Draw at canvas-local coordinates, clipped to both canvas->clip and the
+ * framebuffer. Fully clipped icons succeed without reading source pixels. */
+wm_status wm_canvas_icon(wm_canvas *canvas, int32_t x, int32_t y,
+                         const icon_t *icon, wm_color foreground);
 void wm_canvas_text(wm_canvas *canvas, int32_t x, int32_t y,
                     const char *text, wm_color color);
 /* Select font_c8x14 or font_c12x20; wm_canvas_text defaults to font_c8x14.
