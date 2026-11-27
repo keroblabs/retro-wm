@@ -2,9 +2,31 @@ cmake_minimum_required(VERSION 3.16)
 project(retro_wm VERSION 0.1.0 LANGUAGES C)
 
 option(RETRO_WM_BUILD_DEMO "Build the SDL2 host" ON)
+option(RETRO_WM_BUILD_ICON_DEMO "Compile the generated floppy icon into the SDL demo" OFF)
 option(RETRO_WM_SANITIZE "Enable address and undefined-behavior sanitizers" OFF)
 set(RETRO_WM_PIXEL_FORMAT "RGB888" CACHE STRING "Framebuffer pixel format: RGB565 or RGB888")
 set_property(CACHE RETRO_WM_PIXEL_FORMAT PROPERTY STRINGS RGB565 RGB888)
+
+if(RETRO_WM_BUILD_ICON_DEMO AND NOT RETRO_WM_BUILD_DEMO)
+    message(FATAL_ERROR
+        "RETRO_WM_BUILD_ICON_DEMO=ON requires RETRO_WM_BUILD_DEMO=ON")
+endif()
+
+set(RETRO_WM_ICON_DEMO_ASSET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/icons/converted/c")
+set(RETRO_WM_ICON_DEMO_SOURCE "${RETRO_WM_ICON_DEMO_ASSET_DIR}/icon_floppy_disk.c")
+set(RETRO_WM_ICON_DEMO_HEADER "${RETRO_WM_ICON_DEMO_ASSET_DIR}/icon_floppy_disk.h")
+if(RETRO_WM_BUILD_ICON_DEMO)
+    foreach(icon_resource IN ITEMS
+            "${RETRO_WM_ICON_DEMO_SOURCE}"
+            "${RETRO_WM_ICON_DEMO_HEADER}")
+        if(NOT EXISTS "${icon_resource}")
+            message(FATAL_ERROR
+                "Missing opt-in icon demo resource: ${icon_resource}\n"
+                "Generate it from the repository root with:\n"
+                "  python3 tools/convert_icons_rgb565.py --crop-config icons/images/crop-proposals.json")
+        endif()
+    endforeach()
+endif()
 
 if(RETRO_WM_PIXEL_FORMAT STREQUAL "RGB565")
     set(RETRO_WM_PIXEL_DEFINE WM_PIXEL_FORMAT_RGB565)
@@ -54,6 +76,11 @@ if(RETRO_WM_BUILD_DEMO)
     add_executable(retro_wm_demo examples/sdl_demo.c examples/demo_smoke.c)
     target_link_libraries(retro_wm_demo PRIVATE
         retro_demo_app retro_sdl_host PkgConfig::SDL2)
+    if(RETRO_WM_BUILD_ICON_DEMO)
+        target_sources(retro_wm_demo PRIVATE "${RETRO_WM_ICON_DEMO_SOURCE}")
+        target_include_directories(retro_wm_demo PRIVATE
+            "${RETRO_WM_ICON_DEMO_ASSET_DIR}")
+    endif()
 endif()
 
 if(BUILD_TESTING)

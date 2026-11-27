@@ -61,21 +61,21 @@ Commands from the repository root:
     python3 tools/convert_icons_rgb565.py --analyse-only
 
     # Convert with current crop proposals and automatic exterior transparency:
-    python3 tools/convert_icons_rgb565.py \
+    python3 tools/convert_icons_rgb565.py \\
         --crop-config icons/images/crop-proposals.json
 
     # Make exterior segmentation more aggressive (review the result carefully):
-    python3 tools/convert_icons_rgb565.py \
-        --crop-config icons/images/crop-proposals.json \
+    python3 tools/convert_icons_rgb565.py \\
+        --crop-config icons/images/crop-proposals.json \\
         --flood-tolerance 32
 
     # Select a different reserved RGB565 key, if needed:
-    python3 tools/convert_icons_rgb565.py \
-        --crop-config icons/images/crop-proposals.json \
+    python3 tools/convert_icons_rgb565.py \\
+        --crop-config icons/images/crop-proposals.json \\
         --colour-key 0xF81F
 
     # Restore previous opaque conversion (no key/flood):
-    python3 tools/convert_icons_rgb565.py \
+    python3 tools/convert_icons_rgb565.py \\
         --crop-config icons/images/crop-proposals.json --opaque
 
 ## Generated C icon resources
@@ -123,34 +123,28 @@ future renderer and converters: 1bpp stores packed MSB-first rows and treats
 bit zero as transparent; RGB888 uses native `uint32_t` words of the form
 `0x00RRGGBB`. **This converter currently emits RGB565 only.**
 
-To compile an icon later, add its generated `.c` file to the application
-and include the corresponding `.h`, using `include/` on the C include
-path. The resource descriptor is now available, but window-manager icon
-painting remains tracked under `RWM-ICO-0001/0002`.
+## Optional SDL demo resource build
 
-Use `--no-c` to suppress generated C files if only the raw binary and
-previews are needed. Always apply manual `--cleanup` first when you want the
-C arrays to contain your edited pixel masks.
+`RETRO_WM_BUILD_ICON_DEMO` defaults to `OFF` and requires
+`RETRO_WM_BUILD_DEMO=ON`. When enabled, CMake compiles and links only
+`icons/converted/c/icon_floppy_disk.c` directly into `retro_wm_demo` and adds
+the generated header directory privately. The resource is not registered or
+rendered at runtime; this is build-input integration only. The core and default
+demo do not require generated assets, artwork, Python, or Pillow.
 
-The converter writes to the ignored `icons/converted/` folder:
+From the repository root, generate the resources and build the opt-in demo:
 
-- `c/*.h` and `c/*.c`: C resource descriptors and one RGB565 array per icon.
-- `raw/*.rgb565`: 64×64, headerless, row-major 16-bit RGB565, little-endian
-  by default; **8192 bytes per icon**, including transparent key pixels.
-- `preview/*.png`: **RGBA** PNG previews of the quantized RGB565 pixels.
-  Pixels equal to the key are rendered with alpha=0 for inspection.
-- `manifest.json`: input, crop, placement, transparent pixel count,
-  colour-key encoding, flood threshold and generated C filenames.
-- `crop-contact-sheet.png`: original source/crop rectangles next to output
-  previews on a **checkerboard**, making holes and transparency visible.
+    python3 tools/convert_icons_rgb565.py \\
+        --crop-config icons/images/crop-proposals.json
+    cmake -S . -B build-icon-demo \\
+        -DRETRO_WM_BUILD_DEMO=ON -DRETRO_WM_BUILD_ICON_DEMO=ON
+    cmake --build build-icon-demo
 
-Use `xdg-open icons/converted/crop-contact-sheet.png` to inspect the results.
-
-The adjustable crop rectangles are in `crop-proposals.json`.
-The tool also supports `--size`, `--threshold` (crop detection),
-`--source-padding`, `--canvas-padding`, `--background R,G,B`,
-`--endian big`, `--alpha-cutoff` and `--output-dir`.
-Run `--help` for the complete set. Source PNGs are never modified.
+CMake reports the missing resource and this generation command if either the
+floppy C file or header is absent. After editing and reviewing manual masks,
+refresh the generated resource with `--cleanup` as described below, then rebuild.
+The converter is not run automatically by CMake. Generated files remain ignored
+by Git and are not included in the default build.
 
 ## Editable pixel maps and manual cleanup
 
@@ -168,7 +162,7 @@ exports an editable pixel map for each icon under `icons/masks/`:
 
 **First pass** (creates maps if missing, but never overwrites manual edits):
 
-    python3 tools/convert_icons_rgb565.py \
+    python3 tools/convert_icons_rgb565.py \\
         --crop-config icons/images/crop-proposals.json
 
 **Edit** `icons/masks/icon_drive.txt` (and the other maps) in any plain-text
@@ -187,7 +181,7 @@ a different `--colour-key` instead of silently losing the pixel.
 
 **Second pass**, apply your edited maps:
 
-    python3 tools/convert_icons_rgb565.py \
+    python3 tools/convert_icons_rgb565.py \\
         --crop-config icons/images/crop-proposals.json --cleanup
 
 This updates `icons/converted/raw/*.rgb565` and the RGBA previews/contact
@@ -197,16 +191,18 @@ sheet. It **does not rewrite the text maps**. The manifest separately reports
 Restored pixels use colours recomputed from the original image, not guessed
 from the key. There is no extra alpha buffer in the binary file.
 
-The editable `icons/masks/` directory is deliberately **not gitignored**:
-after approving a cleaned mask you may commit its text and JSON metadata to
-the `icon-devel` branch for reproducible conversion.
+The editable `icons/masks/` directory is ignored by the repository's current
+`.gitignore` rule. Its text maps and JSON metadata are local working files;
+they are not present in a fresh checkout. Preserve manual masks in the same
+workspace and do not assume Git will retain them. This integration does not
+change the ignore rule or authorize publishing masks.
 
 If a source image, crop rectangle or conversion setting changes the baseline,
 `--cleanup` reports a hash mismatch instead of silently shifting your edits
 onto different pixels. Review any changes, back up your edited masks, and
 regenerate them **explicitly** with `--reset-maps` (this overwrites edits):
 
-    python3 tools/convert_icons_rgb565.py \
+    python3 tools/convert_icons_rgb565.py \\
         --crop-config icons/images/crop-proposals.json --reset-maps
 
 After regenerating, re-apply any desired manual cleanup. The raw and preview
